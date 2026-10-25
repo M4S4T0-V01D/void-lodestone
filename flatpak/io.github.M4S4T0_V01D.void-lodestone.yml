@@ -24,7 +24,7 @@ modules:
   - name: openssl-1.1
     buildsystem: simple
     build-commands:
-      - ./config --prefix=/app --libdir=lib --openssldir=/etc/ssl shared no-tests no-docs
+      - ./config --prefix=/app --libdir=lib --openssldir=/etc/ssl shared no-tests
       - make -j${FLATPAK_BUILDER_N_JOBS} build_libs
       - install -Dm755 -t /app/lib libcrypto.so.1.1 libssl.so.1.1
     sources:
