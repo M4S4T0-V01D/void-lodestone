@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.M4S4T0_V01D.void-lodestone</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>VOID Lodestone</name>
+  <summary>Play Old School RuneScape and RuneScape 3 with your Jagex accounts</summary>
+  <developer id="io.github.m4s4t0_v01d">
+    <name>M4S4T0-V01D</name>
+  </developer>
+
+  <description>
+    <p>
+      VOID Lodestone is a fast, open-source launcher for RuneLite, HDOS and RuneScape 3. Sign in with as many Jagex accounts as you
+      like, pick a character and play.
+    </p>
+    <ul>
+      <li>Multiple Jagex accounts and characters, each a click away</li>
+      <li>Old School RuneScape through RuneLite or HDOS</li>
+      <li>RuneScape 3 with everything it needs included</li>
+      <li>Clients are downloaded from their official sources and kept up to date</li>
+      <li>Run several games at once and stop them from the launcher</li>
+      <li>Custom Java options, client arguments and launch wrappers such as gamemoderun or MangoHud</li>
+      <li>Seven themes from the VOID suite</li>
+      <li>No telemetry: game sessions stay in your system keyring</li>
+    </ul>
+    <p>
+      VOID Lodestone is not affiliated with or endorsed by Jagex. RuneScape and Old School RuneScape are trademarks of Jagex Ltd.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.M4S4T0_V01D.void-lodestone.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Choosing a client and character for Old School</caption>
+      <image>https://raw.githubusercontent.com/M4S4T0-V01D/void-lodestone/main/docs/assets/screenshot-void.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Launching RuneScape 3</caption>
+      <image>https://raw.githubusercontent.com/M4S4T0-V01D/void-lodestone/main/docs/assets/screenshot-rs3.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The Daylight theme</caption>
+      <image>https://raw.githubusercontent.com/M4S4T0-V01D/void-lodestone/main/docs/assets/screenshot-daylight.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://m4s4t0-v01d.github.io/void-lodestone/</url>
+  <url type="bugtracker">https://github.com/M4S4T0-V01D/void-lodestone/issues</url>
+  <url type="vcs-browser">https://github.com/M4S4T0-V01D/void-lodestone</url>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#e8c46a</color>
+    <color type="primary" scheme_preference="dark">#2a1f4a</color>
+  </branding>
+
+  <categories>
+    <category>Game</category>
+  </categories>
+  <keywords>
+    <keyword>RuneScape</keyword>
+    <keyword>OSRS</keyword>
+    <keyword>RuneLite</keyword>
+    <keyword>HDOS</keyword>
+    <keyword>Jagex</keyword>
+  </keywords>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2026-10-25">
+      <description>
+        <p>First release: multiple Jagex accounts, RuneLite, HDOS and RuneScape 3, themes and no telemetry.</p>
+      </description>
+    </release>
+  </releases>
+</component>

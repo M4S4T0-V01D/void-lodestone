@@ -1,0 +1,78 @@
+id: io.github.M4S4T0_V01D.void-lodestone
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: void-lodestone
+finish-args:
+  - --share=ipc
+  - --share=network
+  # The Java clients and RuneScape 3 are X11 programs; Lodestone itself uses Wayland when it can.
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Games keep their settings and caches in the app's own data folder; no home access is needed.
+
+modules:
+  # RuneScape 3 links against GTK 2 and OpenSSL 1.1, which the runtime no longer ships.
+  - shared-modules/gtk2/gtk2.json
+
+  - name: openssl-1.1
+    buildsystem: simple
+    build-commands:
+      - ./config --prefix=/app --libdir=lib --openssldir=/etc/ssl shared no-tests no-docs
+      - make -j${FLATPAK_BUILDER_N_JOBS} build_libs
+      - install -Dm755 -t /app/lib libcrypto.so.1.1 libssl.so.1.1
+    sources:
+      - type: archive
+        url: https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz
+        sha256: cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8
+        x-checker-data:
+          type: anitya
+          project-id: 2566
+          versions: {<: 1.1.2}
+          url-template: https://github.com/openssl/openssl/releases/download/OpenSSL_$major_$minor_$patch/openssl-$version.tar.gz
+
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  - name: void-lodestone
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/void-lodestone/cargo
+        XDG_CACHE_HOME: /run/build/void-lodestone/flatpak-node/cache
+        npm_config_cache: /run/build/void-lodestone/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - npm ci --offline --ignore-scripts
+      - npm run build
+      - cargo --offline build --release --locked --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/void-lodestone /app/bin/void-lodestone
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 flatpak/icons/${FLATPAK_ID}.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - for s in 32 128 256 512; do install -Dm644 flatpak/icons/${s}x${s}.png /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png; done
+    sources:
+      # Flathub builds a tagged release instead:
+      #   - type: git
+      #     url: https://github.com/M4S4T0-V01D/void-lodestone.git
+      #     tag: v0.1.0
+      - type: dir
+        path: ..
+        skip:
+          - node_modules
+          - dist
+          - src-tauri/target
+          - flatpak/.flatpak-builder
+          - flatpak/build-dir
+          - flatpak/repo
+      - cargo-sources.json
+      - node-sources.json

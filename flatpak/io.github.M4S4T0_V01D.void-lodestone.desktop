@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=VOID Lodestone
+GenericName=Game Launcher
+Comment=Launch RuneLite, HDOS and RuneScape 3 with your Jagex accounts
+Exec=void-lodestone
+Icon=io.github.M4S4T0_V01D.void-lodestone
+Terminal=false
+Categories=Game;
+Keywords=RuneScape;OSRS;Old School;RuneLite;HDOS;Jagex;Launcher;
+StartupNotify=true
+StartupWMClass=void-lodestone

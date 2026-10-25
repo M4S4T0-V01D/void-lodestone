@@ -1,0 +1,41 @@
+[package]
+name = "void-lodestone"
+version = "0.1.0"
+description = "VOID Lodestone: a fast, open-source launcher for RuneLite, HDOS and RuneScape 3 with multiple Jagex accounts"
+authors = ["M4S4T0-V01D"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/M4S4T0-V01D/void-lodestone"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "void_lodestone_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time", "rt", "macros", "fs"] }
+# System TLS (OpenSSL from the host or the Flatpak runtime), no bundled crypto library to build.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "form", "http2"] }
+oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+sha2 = "0.10"
+getrandom = "0.3"
+ar = "0.9"
+tar = "0.4"
+lzma-rs = "0.3"
+libc = "0.2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

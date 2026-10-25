@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VOID Lodestone: a Linux launcher for RuneLite, HDOS and RuneScape 3</title>
+    <meta
+      name="description"
+      content="A fast, open-source Linux launcher for Old School RuneScape (RuneLite, HDOS) and RuneScape 3 with multiple Jagex accounts. No telemetry."
+    />
+    <meta property="og:title" content="VOID Lodestone" />
+    <meta property="og:description" content="Multiple Jagex accounts. RuneLite, HDOS and RuneScape 3. No telemetry." />
+    <meta property="og:image" content="https://m4s4t0-v01d.github.io/void-lodestone/assets/screenshot-void.png" />
+    <meta name="theme-color" content="#0b0a12" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="#top"><img src="assets/logo.svg" alt="" /><span class="void">VOID</span> <span class="serif">Lodestone</span></a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+        <a class="btn ghost" href="https://github.com/M4S4T0-V01D/void-lodestone">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <img class="hero-logo" src="assets/logo.svg" alt="VOID Lodestone logo" width="148" height="148" />
+        <h1 class="title">Lodestone</h1>
+        <p class="lead">Every Jagex account, every character, one click from Gielinor.<br />A fast, open-source Linux launcher for RuneLite, HDOS and RuneScape 3.</p>
+        <div class="cta">
+          <a class="btn gold" href="#install">Get it on Linux</a>
+          <a class="btn ghost" href="https://github.com/M4S4T0-V01D/void-lodestone">View source</a>
+        </div>
+        <p class="tiny">Free software · GPL-3.0-or-later · No telemetry</p>
+        <figure class="shot">
+          <img src="assets/screenshot-void.png" alt="VOID Lodestone with three Jagex accounts, RuneLite selected and the Play button" width="1280" height="800" />
+        </figure>
+      </section>
+
+      <section id="features" class="features">
+        <h2 class="serif">Built for the grind</h2>
+        <div class="grid">
+          <article>
+            <h3>Many accounts</h3>
+            <p>Add as many Jagex accounts as you like. Main, iron, pure, skiller: every character is listed and ready to play.</p>
+          </article>
+          <article>
+            <h3>Old School, your way</h3>
+            <p>Launch Old School RuneScape through RuneLite or HDOS. Lodestone fetches them from their official sources and keeps them current.</p>
+          </article>
+          <article>
+            <h3>RuneScape 3 too</h3>
+            <p>The RuneScape 3 client just works. The Flatpak bundles the older libraries it still depends on.</p>
+          </article>
+          <article>
+            <h3>Several at once</h3>
+            <p>Run multiple games side by side, see how long each has been running, read its log and stop it from the launcher.</p>
+          </article>
+          <article>
+            <h3>Fast and small</h3>
+            <p>A native Rust core with a light web UI. It opens instantly and stays out of the way while you play.</p>
+          </article>
+          <article>
+            <h3>Tweakable</h3>
+            <p>Java options, client arguments, a custom Java, launch wrappers such as <code>gamemoderun</code> or <code>mangohud</code>, and seven VOID themes.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="gallery">
+        <figure>
+          <img src="assets/screenshot-rs3.png" alt="RuneScape 3 tab in the Nebula theme" loading="lazy" width="1280" height="800" />
+          <figcaption>RuneScape 3 in the Nebula theme</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/screenshot-daylight.png" alt="Old School tab in the Daylight theme" loading="lazy" width="1280" height="800" />
+          <figcaption>Daylight, for the sunny days</figcaption>
+        </figure>
+      </section>
+
+      <section id="install" class="install">
+        <h2 class="serif">Install</h2>
+        <div class="card">
+          <h3>Flatpak (recommended)</h3>
+          <p>Everything included: Java for RuneLite and HDOS, and the libraries RuneScape 3 needs.</p>
+          <pre><code>flatpak install flathub io.github.M4S4T0_V01D.void-lodestone
+flatpak run io.github.M4S4T0_V01D.void-lodestone</code></pre>
+          <p class="dim">
+            Until it lands on Flathub, download the <code>.flatpak</code> bundle from the
+            <a href="https://github.com/M4S4T0-V01D/void-lodestone/releases">latest release</a> and run
+            <code>flatpak install --user void-lodestone.flatpak</code>.
+          </p>
+        </div>
+        <div class="card">
+          <h3>From source</h3>
+          <p>Needs Rust, Node.js 22 and WebKitGTK 4.1. RuneLite and HDOS need Java 17 or newer; RuneScape 3 needs GTK 2 and OpenSSL 1.1.</p>
+          <pre><code>git clone https://github.com/M4S4T0-V01D/void-lodestone
+cd void-lodestone
+npm ci
+npx tauri build --no-bundle
+./src-tauri/target/release/void-lodestone</code></pre>
+        </div>
+      </section>
+
+      <section id="privacy" class="privacy">
+        <h2 class="serif">Your account, your business</h2>
+        <ul>
+          <li><b>No telemetry.</b> No analytics, no crash reports, no phoning home. Lodestone only talks to Jagex, GitHub (RuneLite), the HDOS CDN and Jagex's RS3 package server.</li>
+          <li><b>Jagex's own sign-in page.</b> You log in on Jagex's site in a separate window. Lodestone never sees your password.</li>
+          <li><b>Only what it needs.</b> The long-lived sign-in tokens are thrown away; only the game session is kept, in your system keyring.</li>
+          <li><b>Open source.</b> Every line is on GitHub under the GPL. Read it, build it, change it.</li>
+        </ul>
+      </section>
+
+      <section id="faq" class="faq">
+        <h2 class="serif">Questions</h2>
+        <details>
+          <summary>Is this allowed by Jagex?</summary>
+          <p>
+            Lodestone signs in through Jagex's official account system and launches the same clients the official launcher does: RuneLite and HDOS are approved
+            third-party clients, and RuneScape 3 is Jagex's own. It is not affiliated with Jagex, so the usual advice applies: keep to the rules of the game.
+          </p>
+        </details>
+        <details>
+          <summary>Why is there no official Old School client?</summary>
+          <p>Jagex doesn't provide a native Linux build of it. RuneLite and HDOS run natively on Linux and cover what most players want.</p>
+        </details>
+        <details>
+          <summary>Where are my RuneLite settings?</summary>
+          <p>
+            In the Flatpak, games use their own home folder inside the app's data, so RuneLite keeps its profiles in
+            <code>~/.var/app/io.github.M4S4T0_V01D.void-lodestone/data/void-lodestone/home/.runelite</code>. You can point the game home somewhere else in Settings →
+            Launching.
+          </p>
+        </details>
+        <details>
+          <summary>A session says "expired".</summary>
+          <p>Jagex sessions don't last forever. Press <b>Sign in again</b> on that account and you're back.</p>
+        </details>
+        <details>
+          <summary>Something broke.</summary>
+          <p>
+            Open an <a href="https://github.com/M4S4T0-V01D/void-lodestone/issues">issue</a> with what happened. Game logs are under Settings → Launching → Game logs.
+          </p>
+        </details>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        VOID Lodestone by <a href="https://github.com/M4S4T0-V01D">M4S4T0-V01D</a> · Free software under the
+        <a href="https://github.com/M4S4T0-V01D/void-lodestone/blob/main/LICENSE">GPL-3.0-or-later</a>
+      </p>
+      <p class="dim">
+        Not affiliated with or endorsed by Jagex Ltd. RuneScape and Old School RuneScape are trademarks of Jagex Ltd. RuneLite and HDOS belong to their
+        respective developers.
+      </p>
+    </footer>
+  </body>
+</html>
