@@ -47,6 +47,12 @@ export function splitPick(p: Pick): [string, string] | null {
   return i > 0 ? [p.slice(0, i), p.slice(i + 1)] : null;
 }
 
+/** Whether the pick names a character that still exists. */
+export function validPick(p: Pick, accounts: Account[]): boolean {
+  const parts = splitPick(p);
+  return !!parts && !!accounts.find((a) => a.id === parts[0])?.characters.some((c) => c.accountId === parts[1]);
+}
+
 /** The saved pick if it still exists, else the first character of the first signed-in account. */
 export function resolvePick(saved: Pick, accounts: Account[]): Pick {
   const parts = splitPick(saved);
@@ -60,4 +66,57 @@ export function resolvePick(saved: Pick, accounts: Account[]): Pick {
 
 export function characterName(name: string): string {
   return name.trim() || 'New character';
+}
+
+/** "2 h 05 m", "12 m", "0 m" for a number of seconds. */
+export function duration(secs: number): string {
+  const m = Math.floor(Math.max(0, secs) / 60);
+  const h = Math.floor(m / 60);
+  return h ? `${h} h ${String(m % 60).padStart(2, '0')} m` : `${m} m`;
+}
+
+/** Seconds of the sessions that fall on or after `from`. */
+function since(sessions: [number, number][], from: number): number {
+  return sessions.reduce((sum, [a, b]) => sum + Math.max(0, b - Math.max(a, from)), 0);
+}
+
+/** Time played today, this week (from Monday) and in total, in local time; `live` holds the start times of games still running. */
+export function playtimeSums(entry: { total: number; sessions: [number, number][] } | undefined, live: number[], now = Date.now() / 1000) {
+  const sessions: [number, number][] = [...(entry?.sessions ?? []), ...live.map((s): [number, number] => [s, now])];
+  const d = new Date(now * 1000);
+  d.setHours(0, 0, 0, 0);
+  const today = d.getTime() / 1000;
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const week = d.getTime() / 1000;
+  return { today: since(sessions, today), week: since(sessions, week), total: (entry?.total ?? 0) + since(live.map((s) => [s, now]), 0) };
+}
+
+/** An extra character row: who, with which client, and whether to use that client's custom jar. */
+export interface Row {
+  pick: Pick;
+  client: ClientId;
+  jar: boolean;
+}
+
+/** Saved extra rows; older versions kept only the picks. */
+export function loadRows(raw: unknown): Row[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((x): Row[] => {
+    if (typeof x === 'string') return [{ pick: x, client: 'runelite', jar: false }];
+    if (x && typeof x === 'object' && typeof (x as Row).pick === 'string') {
+      const r = x as Partial<Row>;
+      const client: ClientId = r.client === 'hdos' || r.client === 'rs3' ? r.client : 'runelite';
+      return [{ pick: r.pick!, client, jar: !!r.jar }];
+    }
+    return [];
+  });
+}
+
+/** A line that reports an error (not the stack frames under it). */
+export function isErrorLine(line: string): boolean {
+  return /\b(ERROR|SEVERE|FATAL)\b/.test(line) || /^\S.*\b\w*(Exception|Error)\b(:|$)/.test(line);
+}
+
+export function isStackLine(line: string): boolean {
+  return /^\s+(at |\.\.\. \d+ more)/.test(line);
 }

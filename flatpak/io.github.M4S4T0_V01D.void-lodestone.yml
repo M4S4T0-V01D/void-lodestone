@@ -15,11 +15,19 @@ finish-args:
   - --socket=wayland
   - --socket=pulseaudio
   - --device=dri
-  # Games keep their settings and caches in the app's own data folder; no home access is needed.
+  # Games keep their settings and caches in the app's own data folder. Documents holds custom client jars and the
+  # plugin projects that Build & play compiles (Gradle writes their build folders), so it is writable.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-pictures:ro
+  # The tray icon and desktop notifications.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
 
 modules:
   # RuneScape 3 links against GTK 2 and OpenSSL 1.1, which the runtime no longer ships.
   - shared-modules/gtk2/gtk2.json
+  # The tray icon.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
 
   - name: openssl-1.1
     buildsystem: simple
@@ -41,6 +49,9 @@ modules:
     buildsystem: simple
     build-commands:
       - /usr/lib/sdk/openjdk21/install.sh
+      # A full JDK, so Build & play can compile plugins: the compiler, jar and the --release symbol table.
+      - cp -a /usr/lib/sdk/openjdk21/jvm/openjdk-21/bin/javac /usr/lib/sdk/openjdk21/jvm/openjdk-21/bin/jar /app/jre/bin/
+      - cp -a /usr/lib/sdk/openjdk21/jvm/openjdk-21/lib/ct.sym /app/jre/lib/
 
   - name: void-lodestone
     buildsystem: simple

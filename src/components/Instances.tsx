@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Square } from 'lucide-react';
+import { RotateCw, ScrollText, Square } from 'lucide-react';
 import { CLIENTS, uptime } from '../format';
 import type { Instance } from '../types';
 
 interface Props {
   instances: Instance[];
   onStop: (pid: number) => void;
+  onStopAll: () => void;
+  /** Start the same character again with the same client and jar. */
+  onRestart: (pid: number) => void;
+  /** Games being restarted right now. */
+  restarting?: number[];
   onLogs: () => void;
+  onLog: (i: Instance) => void;
 }
 
-export default function Instances({ instances, onStop, onLogs }: Props) {
+export default function Instances({ instances, onStop, onStopAll, onRestart, restarting = [], onLogs, onLog }: Props) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
     if (!instances.length) return;
@@ -23,7 +29,12 @@ export default function Instances({ instances, onStop, onLogs }: Props) {
         <span>Running</span>
         <span className="badge">{instances.length}</span>
         <span className="spacer" />
-        <button className="btn ghost small" onClick={onLogs}>
+        {instances.length > 1 && (
+          <button className="btn ghost small" title="Stop every running game" onClick={onStopAll}>
+            Stop all
+          </button>
+        )}
+        <button className="btn ghost small" title="Open the logs folder" onClick={onLogs}>
           Logs
         </button>
       </div>
@@ -39,14 +50,36 @@ export default function Instances({ instances, onStop, onLogs }: Props) {
                   {CLIENTS[i.client].name} · {i.accountLabel}
                 </span>
               </span>
+              <button className="icon-btn" title="Live log" onClick={() => onLog(i)}>
+                <ScrollText size={13} />
+              </button>
+              <button className="icon-btn" title="Restart: same character, client and jar" disabled={restarting.includes(i.pid)} onClick={() => onRestart(i.pid)}>
+                <RotateCw size={13} className={restarting.includes(i.pid) ? 'spin' : undefined} />
+              </button>
               <button className="icon-btn danger" title="Stop this game" onClick={() => onStop(i.pid)}>
                 <Square size={13} />
               </button>
             </div>
             <div className="instance-foot">
               <span className="mono">{uptime(i.startedAt, now)}</span>
+              {i.customJar && (
+                <span className="badge warn" title="Started with the custom jar">
+                  custom jar
+                </span>
+              )}
+              {i.debugPort != null && (
+                <span className="badge" title={`Attach a debugger (remote JVM, socket) to 127.0.0.1:${i.debugPort}`}>
+                  debug :{i.debugPort}
+                </span>
+              )}
+              <span className="spacer" />
               <span className="mono">pid {i.pid}</span>
             </div>
+            {i.rebuilt && (
+              <button className="rebuilt" disabled={restarting.includes(i.pid)} onClick={() => onRestart(i.pid)} title="The jar or a sideloaded plugin changed since this game started">
+                <RotateCw size={12} /> Rebuilt, restart?
+              </button>
+            )}
           </div>
         ))}
       </div>

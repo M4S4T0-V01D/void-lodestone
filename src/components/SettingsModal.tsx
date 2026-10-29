@@ -4,7 +4,7 @@ import logo from '../assets/logo.svg';
 import { CLIENTS } from '../format';
 import { THEMES } from '../themes';
 import type { Folder } from '../api';
-import type { AppState, ClientId, Settings } from '../types';
+import type { AppState, ClientId, ClientOpts, Settings } from '../types';
 
 type Tab = 'appearance' | 'clients' | 'launching' | 'about';
 
@@ -27,7 +27,9 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
   const [tab, setTab] = useState<Tab>('appearance');
   const [s, setS] = useState<Settings>(state.settings);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((old) => ({ ...old, [k]: v }));
-  const setOpts = (c: ClientId, k: 'jvmArgs' | 'args', v: string) => setS((old) => ({ ...old, [c]: { ...old[c], [k]: v } }));
+  const setOpts = (c: ClientId, k: Exclude<keyof ClientOpts, 'useJar' | 'debug'>, v: string) =>
+    // Setting a jar turns the switch next to Play on; clearing it turns it off.
+    setS((old) => ({ ...old, [c]: { ...old[c], [k]: v, ...(k === 'jarPath' && { useJar: !!v.trim() }) } }));
 
   const cancel = () => {
     onPreviewTheme(state.settings.theme);
@@ -77,6 +79,73 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                   ))}
                 </div>
               </div>
+              <div className="field">
+                <label htmlFor="bg">Background picture</label>
+                <input
+                  id="bg"
+                  className="input mono"
+                  placeholder="None (for example ~/Pictures/gielinor.png)"
+                  value={s.background}
+                  onChange={(e) => set('background', e.target.value)}
+                />
+                <span className="hint">
+                  Shown behind the middle area. PNG, JPEG, WebP or GIF; it stays on this computer.
+                  {state.flatpak && ' The Flatpak can read your Pictures and Documents folders and RuneLite’s screenshots.'}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                  <button className="btn" onClick={() => onOpenFolder('screenshots')}>
+                    <FolderOpen size={14} /> RuneLite screenshots
+                  </button>
+                  <label htmlFor="bg-dim" className="dim" style={{ fontSize: 12 }}>
+                    Darken
+                  </label>
+                  <input
+                    id="bg-dim"
+                    type="range"
+                    min={0}
+                    max={90}
+                    step={5}
+                    value={s.backgroundDim}
+                    disabled={!s.background.trim() && !s.backgroundRs3.trim() && !s.backgroundRotate}
+                    onChange={(e) => set('backgroundDim', Number(e.target.value))}
+                  />
+                  <span className="mono dim" style={{ fontSize: 12 }}>
+                    {s.backgroundDim}%
+                  </span>
+                  <label htmlFor="bg-blur" className="dim" style={{ fontSize: 12 }}>
+                    Blur
+                  </label>
+                  <input
+                    id="bg-blur"
+                    type="range"
+                    min={0}
+                    max={30}
+                    step={1}
+                    value={s.backgroundBlur}
+                    onChange={(e) => set('backgroundBlur', Number(e.target.value))}
+                  />
+                  <span className="mono dim" style={{ fontSize: 12 }}>
+                    {s.backgroundBlur}px
+                  </span>
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="bg-rs3">RuneScape 3 picture</label>
+                <input
+                  id="bg-rs3"
+                  className="input mono"
+                  placeholder="Same as above"
+                  value={s.backgroundRs3}
+                  onChange={(e) => set('backgroundRs3', e.target.value)}
+                />
+              </div>
+              <label className="check">
+                <input type="checkbox" checked={s.backgroundRotate} onChange={(e) => set('backgroundRotate', e.target.checked)} />
+                <span>
+                  Rotate RuneLite screenshots
+                  <span className="hint dim">On the Old School tab, shows a random screenshot of yours, changing every five minutes.</span>
+                </span>
+              </label>
               <label className="check">
                 <input type="checkbox" checked={s.reduceMotion} onChange={(e) => set('reduceMotion', e.target.checked)} />
                 <span>
@@ -121,6 +190,27 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                       />
                     </div>
                   </div>
+                  {c !== 'rs3' && (
+                    <div className="field">
+                      <label htmlFor={`${c}-jar`}>Custom jar</label>
+                      <input
+                        id={`${c}-jar`}
+                        className="input mono"
+                        placeholder={`Default (downloaded ${CLIENTS[c].name})`}
+                        value={s[c].jarPath}
+                        onChange={(e) => setOpts(c, 'jarPath', e.target.value)}
+                      />
+                      <span className="hint">
+                        Runs this jar instead, for example a developer-mode bootstrap.
+                        {state.flatpak && ' The Flatpak can read jars in your Documents folder.'}
+                      </span>
+                      {c === 'runelite' && (
+                        <button className="btn" style={{ alignSelf: 'flex-start', marginTop: 4 }} onClick={() => onOpenFolder('plugins')}>
+                          <FolderOpen size={14} /> Sideloaded plugins
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {c === 'rs3' && (
                     <div className="field">
                       <label htmlFor="rs3-uri">Config URI</label>
@@ -147,6 +237,43 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                 />
                 <span className="hint">Used for RuneLite and HDOS. Java 17 or newer is recommended.</span>
               </div>
+              <div className="group">
+                <h3>Plugin development</h3>
+                <div className="field">
+                  <label htmlFor="projects">Plugin projects</label>
+                  <textarea
+                    id="projects"
+                    className="input mono"
+                    rows={3}
+                    placeholder={'~/Documents/Projects/death-recap\n~/Documents/Projects/gielinor-unwrapped'}
+                    value={s.pluginProjects}
+                    onChange={(e) => set('pluginProjects', e.target.value)}
+                  />
+                  <span className="hint">
+                    One Gradle project per line. Build &amp; play builds each one, copies the jars to the sideloaded plugins folder and starts (or restarts) your
+                    characters only if every build worked.
+                  </span>
+                </div>
+                <div className="field-row">
+                  <div className="field">
+                    <label htmlFor="task">Gradle task</label>
+                    <input id="task" className="input mono" placeholder="jar" value={s.buildTask} onChange={(e) => set('buildTask', e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="debug-port">Debug port</label>
+                    <input
+                      id="debug-port"
+                      className="input mono"
+                      type="number"
+                      min={1024}
+                      max={65535}
+                      value={s.debugPort}
+                      onChange={(e) => set('debugPort', Number(e.target.value) || 5005)}
+                    />
+                  </div>
+                </div>
+                <span className="hint">The Debug switch opens a JDWP port for your IDE to attach to; each extra game takes the next free port.</span>
+              </div>
             </>
           )}
 
@@ -157,6 +284,24 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                 <span>
                   Minimise Lodestone after launching a game
                   <span className="hint dim">Running games keep going if you close Lodestone.</span>
+                </span>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={s.closeToTray} disabled={!state.tray} onChange={(e) => set('closeToTray', e.target.checked)} />
+                <span>
+                  Close to the tray while games run
+                  <span className="hint dim">
+                    {state.tray
+                      ? 'The tray icon lists running games, starts saved groups and stops everything.'
+                      : 'No tray is available here (libappindicator is missing).'}
+                  </span>
+                </span>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={s.notifications} onChange={(e) => set('notifications', e.target.checked)} />
+                <span>
+                  Desktop notifications
+                  <span className="hint dim">For crashes, expired sessions and update checks that fail.</span>
                 </span>
               </label>
               <div className="field">
@@ -195,6 +340,9 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                   </button>
                   <button className="btn" onClick={() => onOpenFolder('data')}>
                     <FolderOpen size={14} /> Data
+                  </button>
+                  <button className="btn" onClick={() => onOpenFolder('plugins')}>
+                    <FolderOpen size={14} /> RuneLite plugins
                   </button>
                 </div>
               </div>

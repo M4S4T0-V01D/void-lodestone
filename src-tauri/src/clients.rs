@@ -73,6 +73,22 @@ struct Meta {
     sha256: String,
     checked_at: u64,
     installed_at: u64,
+    /// Why the last update check failed; empty when it worked.
+    last_error: String,
+    /// The version this one replaced.
+    previous_version: String,
+}
+
+impl Meta {
+    fn fresh(version: String, sha256: String) -> Self {
+        Meta { version, sha256, checked_at: now(), installed_at: now(), ..Meta::default() }
+    }
+
+    /// Remember what this download replaced (a re-download of the same version keeps the older note).
+    fn after(self, old: Meta) -> Self {
+        let previous_version = if old.version == self.version { old.previous_version } else { old.version };
+        Meta { previous_version, ..self }
+    }
 }
 
 fn load_meta(c: Client) -> Meta {
@@ -93,6 +109,8 @@ pub struct Status {
     pub checked_at: u64,
     pub installed_at: u64,
     pub size: u64,
+    pub last_error: String,
+    pub previous_version: String,
 }
 
 pub fn status(c: Client) -> Status {
@@ -105,6 +123,8 @@ pub fn status(c: Client) -> Status {
         checked_at: m.checked_at,
         installed_at: m.installed_at,
         size,
+        last_error: m.last_error,
+        previous_version: m.previous_version,
     }
 }
 
@@ -144,6 +164,12 @@ pub async fn ensure(
         Client::Hdos => update_hdos(http, emit).await,
         Client::Rs3 => update_rs3(http, emit).await,
     };
+    let mut meta = load_meta(c);
+    let error = res.as_ref().err().cloned().unwrap_or_default();
+    if meta.last_error != error {
+        meta.last_error = error;
+        save_meta(c, &meta);
+    }
     match res {
         Ok(()) => {
             let st = status(c);
@@ -249,7 +275,7 @@ async fn update_runelite(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send
             return Err(mismatch(&dest));
         }
     }
-    save_meta(c, &Meta { version: rel.tag_name, sha256: sha, checked_at: now(), installed_at: now(), ..Meta::default() });
+    save_meta(c, &Meta::fresh(rel.tag_name, sha).after(meta));
     Ok(())
 }
 
@@ -274,7 +300,7 @@ async fn update_hdos(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + S
     let (etag, last_modified) = (header("etag"), header("last-modified"));
     let (sha, _) = save(c, res, &c.file(), emit).await?;
     let version = if last_modified.is_empty() { format!("sha256 {}", &sha[..12]) } else { last_modified.clone() };
-    save_meta(c, &Meta { version, etag, last_modified, sha256: sha, checked_at: now(), installed_at: now() });
+    save_meta(c, &Meta { etag, last_modified, ..Meta::fresh(version, sha).after(meta) });
     Ok(())
 }
 
@@ -383,7 +409,7 @@ async fn update_rs3(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + Sy
     })
     .await
     .map_err(|e| e.to_string())??;
-    save_meta(c, &Meta { version: pkg.version, sha256: sha, checked_at: now(), installed_at: now(), ..Meta::default() });
+    save_meta(c, &Meta::fresh(pkg.version, sha).after(meta));
     Ok(())
 }
 

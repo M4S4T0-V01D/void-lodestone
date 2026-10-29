@@ -34,6 +34,32 @@ pub struct ClientOpts {
     pub jvm_args: String,
     /// Extra arguments for the client itself.
     pub args: String,
+    /// A jar to run instead of the downloaded one (RuneLite, HDOS), such as a developer-mode bootstrap. Empty: the
+    /// downloaded client.
+    pub jar_path: String,
+    /// Whether launches use `jar_path` (the Custom jar / Normal switch next to Play).
+    pub use_jar: bool,
+    /// Start custom-jar launches with a Java debugger port open (JDWP on localhost).
+    pub debug: bool,
+}
+
+/// One character in a saved group: `pick` is `account id:character id`; `client` and `jar` are for Old School.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GroupRow {
+    pub pick: String,
+    pub client: String,
+    pub jar: bool,
+}
+
+/// Characters started together with one click.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Group {
+    pub name: String,
+    /// "osrs" or "rs3".
+    pub game: String,
+    pub rows: Vec<GroupRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,6 +78,27 @@ pub struct Settings {
     pub rs3_config_uri: String,
     pub minimize_on_launch: bool,
     pub reduce_motion: bool,
+    /// A picture behind the middle of the window; empty for none. Only ever read from the user's own disk.
+    pub background: String,
+    /// How much the background picture is darkened, in percent, so text stays readable.
+    pub background_dim: u8,
+    /// The RuneScape 3 tab's picture; empty uses `background`.
+    pub background_rs3: String,
+    /// Show a different RuneLite screenshot every few minutes instead of a fixed picture.
+    pub background_rotate: bool,
+    /// Background blur in pixels.
+    pub background_blur: u8,
+    /// The first JDWP port for debug launches; more games at once take the next free ones.
+    pub debug_port: u16,
+    /// RuneLite plugin projects (Gradle), one folder per line, built by "Build & play".
+    pub plugin_projects: String,
+    /// The Gradle task that makes each plugin's jar.
+    pub build_task: String,
+    /// Desktop notifications for crashes, expired sessions and failed update checks.
+    pub notifications: bool,
+    /// Closing the window hides it to the tray (when there is one) instead of quitting.
+    pub close_to_tray: bool,
+    pub groups: Vec<Group>,
     pub last_game: String,
     pub last_client: String,
     pub last_character: String,
@@ -72,6 +119,17 @@ impl Default for Settings {
             rs3_config_uri: RS3_CONFIG_URI.into(),
             minimize_on_launch: false,
             reduce_motion: false,
+            background: String::new(),
+            background_dim: 55,
+            background_rs3: String::new(),
+            background_rotate: false,
+            background_blur: 0,
+            debug_port: 5005,
+            plugin_projects: String::new(),
+            build_task: "jar".into(),
+            notifications: true,
+            close_to_tray: true,
+            groups: Vec::new(),
             last_game: "osrs".into(),
             last_client: "runelite".into(),
             last_character: String::new(),
@@ -92,6 +150,9 @@ pub struct Account {
     pub characters: Vec<Character>,
     #[serde(default)]
     pub added_at: u64,
+    /// When the saved session was created (the last sign-in). 0 for accounts from older versions.
+    #[serde(default)]
+    pub signed_in_at: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -167,6 +228,7 @@ mod tests {
             subject: "sub".into(),
             characters: vec![Character { account_id: "c1".into(), display_name: "Zezima".into() }],
             added_at: 1,
+            signed_in_at: 2,
         });
         s.save_to(&p).unwrap();
         assert_eq!(Store::load_from(&p), s);

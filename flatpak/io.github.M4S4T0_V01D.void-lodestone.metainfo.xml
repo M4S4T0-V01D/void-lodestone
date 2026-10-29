@@ -78,6 +78,11 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.2.0" date="2026-10-29">
+      <description>
+        <p>Saved groups, a client per character, Build &amp; play for plugin developers, a debug switch, a tray icon, crash notices, desktop notifications, playtime and custom backgrounds.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-25">
       <description>
         <p>First release: multiple Jagex accounts, RuneLite, HDOS and RuneScape 3, themes and no telemetry.</p>

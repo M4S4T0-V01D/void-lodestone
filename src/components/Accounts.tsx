@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Check, LogIn, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { characterName, makePick } from '../format';
+import { ago, characterName, makePick } from '../format';
 import type { Account, Instance, Pick } from '../types';
 
 interface Props {
@@ -15,6 +15,22 @@ interface Props {
   onRename: (id: string, label: string) => void;
   onMove: (id: string, to: number) => void;
   onRefresh: () => void;
+}
+
+/** One line on how the saved session last fared with Jagex. */
+function Health({ a }: { a: Account }) {
+  const h = a.health;
+  const since = a.signedInAt ? `Signed in ${ago(a.signedInAt)}.` : '';
+  if (!a.signedIn || !h) return null;
+  const [cls, text, tip] =
+    h.state === 'offline'
+      ? ['warn', "Couldn't reach Jagex", "Jagex didn't answer the last check, so the session is untested. Play still tries it."]
+      : ['ok', 'Session OK', 'Jagex accepted the saved session.'];
+  return (
+    <div className={`health ${cls}`} title={`${tip} ${since}`.trim()}>
+      {text} · checked {ago(h.checkedAt)}
+    </div>
+  );
 }
 
 export default function Accounts(p: Props) {
@@ -43,7 +59,10 @@ export default function Accounts(p: Props) {
         {p.accounts.map((a, idx) => (
           <div className="account" key={a.id}>
             <div className="account-head">
-              <span className={`dot ${a.signedIn ? 'on' : 'off'}`} title={a.signedIn ? 'Signed in' : 'Session expired'} />
+              <span
+                className={`dot ${!a.signedIn ? 'off' : a.health?.state === 'offline' ? 'warn' : 'on'}`}
+                title={a.signedIn ? 'Signed in' : 'Session expired'}
+              />
               {editing === a.id ? (
                 <input
                   className="input"
@@ -95,9 +114,10 @@ export default function Accounts(p: Props) {
                 </span>
               )}
             </div>
+            <Health a={a} />
             {!a.signedIn && (
               <div className="signin-note">
-                <span>Session expired</span>
+                <span title={a.health ? `Checked ${ago(a.health.checkedAt)}` : undefined}>Session expired</span>
                 <button className="btn small" onClick={() => p.onReauth(a.id)} disabled={p.busy}>
                   <LogIn size={12} /> Sign in again
                 </button>

@@ -1,7 +1,7 @@
 {
   "name": "void-lodestone",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A fast, open-source Linux launcher for RuneLite, HDOS and RuneScape 3 with multiple Jagex accounts",
   "license": "GPL-3.0-or-later",
   "author": "M4S4T0-V01D",
