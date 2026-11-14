@@ -1,6 +1,22 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { AppState, BuildLine, ClientId, ClientStatus, Instance, LogChunk, LoginMode, LoginStatus, LogSource, Playtime, Progress, Settings } from './types';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import type {
+  AppState,
+  BuildLine,
+  ClientId,
+  ClientStatus,
+  Instance,
+  LogChunk,
+  LoginMode,
+  LoginStatus,
+  LogSource,
+  Playtime,
+  Progress,
+  Release,
+  Settings,
+  UpdateProgress,
+} from './types';
 
 export const api = {
   getState: () => invoke<AppState>('get_state'),
@@ -30,12 +46,21 @@ export const api = {
   /** New log text from `from`; without it, the end of the log. */
   readLog: (pid: number, source: LogSource, from: number | null) => invoke<LogChunk>('read_log', { pid, source, from }),
   openFolder: (which: Folder) => invoke<void>('open_folder', { which }),
-  /** A picture file as a data: URL. */
-  backgroundImage: (path: string) => invoke<string>('background_image', { path }),
+  /** A picture file's bytes. */
+  backgroundImage: (path: string) => invoke<ArrayBuffer>('background_image', { path }),
+  /** The latest Lodestone release, newer than this one or not. */
+  checkUpdate: () => invoke<Release>('check_update'),
+  /** The running version's release, for its notes. */
+  releaseNotes: () => invoke<Release>('release_notes'),
+  installUpdate: () => invoke<void>('install_update'),
+  /** Quit and start the installed update; refused while games run. */
+  restartApp: () => invoke<void>('restart_app'),
+  /** Page zoom, 1 for 100%. */
+  setZoom: (factor: number) => getCurrentWebview().setZoom(factor),
 };
 
 /** Folders the backend can open, plus the project page. */
-export type Folder = 'logs' | 'data' | 'clients' | 'plugins' | 'screenshots' | 'website';
+export type Folder = 'logs' | 'data' | 'clients' | 'plugins' | 'screenshots' | 'website' | 'releases';
 
 export const events = {
   progress: (f: (p: Progress) => void): Promise<UnlistenFn> => listen<Progress>('client-progress', (e) => f(e.payload)),
@@ -46,6 +71,8 @@ export const events = {
   buildOutput: (f: (l: BuildLine) => void): Promise<UnlistenFn> => listen<BuildLine>('build-output', (e) => f(e.payload)),
   /** A group was picked in the tray menu. */
   trayGroup: (f: (n: number) => void): Promise<UnlistenFn> => listen<number>('tray-group', (e) => f(e.payload)),
+  updateAvailable: (f: (r: Release) => void): Promise<UnlistenFn> => listen<Release>('update-available', (e) => f(e.payload)),
+  updateProgress: (f: (p: UpdateProgress) => void): Promise<UnlistenFn> => listen<UpdateProgress>('update-progress', (e) => f(e.payload)),
   sessionsChecked: (f: (lost: string[]) => void): Promise<UnlistenFn> => listen<string[]>('sessions-checked', (e) => f(e.payload)),
 };
 

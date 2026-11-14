@@ -148,8 +148,10 @@ textarea {
 }
 
 .body {
+  --left: 260px;
+  --right: 280px;
   display: grid;
-  grid-template-columns: 260px 1fr 280px;
+  grid-template-columns: var(--left) 1fr var(--right);
   min-height: 0;
 }
 
@@ -804,8 +806,14 @@ textarea {
   z-index: 50;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  backdrop-filter: blur(3px);
+  /* No backdrop-filter: with WebKitGTK's shared-memory renderer it re-blurs the whole window on every repaint. */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+/* Nothing under a dialog needs to move, and every frame of it would be repainted behind the dialog. */
+body:has(.overlay) .app *,
+body:has(.overlay) .app *::before,
+body:has(.overlay) .app *::after {
+  animation-play-state: paused !important;
 }
 .modal {
   display: flex;
@@ -856,6 +864,47 @@ textarea {
   gap: 8px;
   padding: 12px 18px;
   border-top: 1px solid var(--border);
+}
+
+.update-modal {
+  width: min(620px, 92vw);
+}
+.update-notes {
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.update-notes h3,
+.update-notes p {
+  margin: 0;
+}
+.update-notes h3 {
+  font-size: 13.5px;
+}
+.update-status {
+  flex: 1;
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+/* The top bar's "new version" button. */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-pill:hover {
+  background: color-mix(in srgb, var(--accent) 26%, var(--panel));
 }
 
 .field {
@@ -1020,10 +1069,102 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+/* Side panel widths; the panels can be folded away from the top bar. */
 @media (max-width: 1080px) {
   .body {
-    grid-template-columns: 230px 1fr 230px;
+    --left: 230px;
+    --right: 230px;
   }
+}
+.app.no-left .body {
+  grid-template-columns: 1fr var(--right);
+}
+.app.no-right .body {
+  grid-template-columns: var(--left) 1fr;
+}
+.app.no-left.no-right .body {
+  grid-template-columns: 1fr;
+}
+
+/* Narrow windows, or a large UI scale. */
+@media (max-width: 860px) {
+  .body {
+    --left: 200px;
+    --right: 200px;
+  }
+  .stage-inner {
+    padding: 18px 16px 24px;
+    gap: 16px;
+  }
+  .launch-row {
+    flex-wrap: wrap;
+  }
+  .play {
+    min-width: 140px;
+    flex: 1;
+  }
+  .clients {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .brand .name {
+    display: none;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Compact density. */
+.app.compact {
+  grid-template-rows: 42px 1fr;
+}
+.app.compact .side-head {
+  padding: 9px 10px 6px;
+}
+.app.compact .account-head {
+  padding: 5px 6px 5px 10px;
+}
+.app.compact .char {
+  padding: 4px 10px;
+}
+.app.compact .instance {
+  padding: 7px 8px;
+  margin-bottom: 6px;
+}
+.app.compact .stage-inner {
+  padding: 16px 20px 22px;
+  gap: 14px;
+}
+.app.compact .hero-logo {
+  width: 84px;
+  height: 84px;
+}
+.app.compact .title {
+  font-size: 26px;
+}
+.app.compact .client {
+  padding: 10px;
+  gap: 10px;
+}
+.app.compact .clients {
+  gap: 8px;
+}
+.app.compact .launchpad {
+  padding: 12px;
+  gap: 8px;
+}
+.app.compact .launch-row .select {
+  padding: 7px 10px;
+}
+.app.compact .play {
+  min-width: 160px;
+  font-size: 17px;
 }
 
 /* ---------- health, jar switch, play several, log viewer ---------- */
@@ -1080,6 +1221,9 @@ textarea {
   background-position: center;
   background-repeat: no-repeat;
   transition: background-image 0.6s;
+  /* Its own layer, so scrolling and the panels repainting don't repaint the picture. */
+  will-change: transform;
+  pointer-events: none;
 }
 .stage.has-bg .hero .title,
 .stage.has-bg .hero .subtitle {
@@ -1292,4 +1436,57 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- appearance settings ---------- */
+
+.slider {
+  display: grid;
+  grid-template-columns: 96px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.slider label {
+  font-weight: 600;
+}
+.slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.slider input:disabled + span {
+  opacity: 0.5;
+}
+.accent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.accent-row input[type='color'] {
+  width: 44px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--bg);
+  cursor: pointer;
+}
+.topbar .icon-btn {
+  position: relative;
+}
+.fold-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
 }

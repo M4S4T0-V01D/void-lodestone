@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { ExternalLink, FolderOpen, KeyRound, Palette, Rocket, Shield, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ExternalLink, FolderOpen, KeyRound, Palette, RefreshCw, Rocket, RotateCcw, Shield, X } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { CLIENTS } from '../format';
-import { THEMES } from '../themes';
+import { findTheme, THEMES } from '../themes';
 import type { Folder } from '../api';
 import type { AppState, ClientId, ClientOpts, Settings } from '../types';
 
@@ -10,10 +10,13 @@ type Tab = 'appearance' | 'clients' | 'launching' | 'about';
 
 interface Props {
   state: AppState;
-  onPreviewTheme: (id: string) => void;
+  /** Show these appearance settings while the window is open; null when they're dropped. */
+  onPreview: (look: Partial<Settings>) => void;
   onSave: (s: Settings) => void;
   onClose: () => void;
   onOpenFolder: (which: Folder) => void;
+  /** Look for a newer Lodestone now. */
+  onCheckUpdate: () => void;
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
@@ -23,7 +26,57 @@ const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
   { id: 'about', label: 'Privacy & about', icon: Shield },
 ];
 
-export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, onOpenFolder }: Props) {
+/** The settings shown on the window as they're changed, before Save. */
+const LOOK = [
+  'theme',
+  'accent',
+  'uiScale',
+  'density',
+  'radius',
+  'showHero',
+  'backgroundDim',
+  'backgroundBlur',
+  'backgroundPosition',
+  'reduceMotion',
+] as const satisfies readonly (keyof Settings)[];
+
+function lookOf(s: Settings): Partial<Settings> {
+  return Object.fromEntries(LOOK.map((k) => [k, s[k]]));
+}
+
+function Slider(p: {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  unit: string;
+  disabled?: boolean;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="slider">
+      <label htmlFor={p.id}>{p.label}</label>
+      <input
+        id={p.id}
+        type="range"
+        min={p.min}
+        max={p.max}
+        step={p.step}
+        value={p.value}
+        disabled={p.disabled}
+        onChange={(e) => p.onChange(Number(e.target.value))}
+      />
+      <span className="mono dim">
+        {p.value}
+        {p.unit}
+      </span>
+    </div>
+  );
+}
+
+export default function SettingsModal({ state, onPreview, onSave, onClose, onOpenFolder, onCheckUpdate }: Props) {
   const [tab, setTab] = useState<Tab>('appearance');
   const [s, setS] = useState<Settings>(state.settings);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((old) => ({ ...old, [k]: v }));
@@ -31,14 +84,27 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
     // Setting a jar turns the switch next to Play on; clearing it turns it off.
     setS((old) => ({ ...old, [c]: { ...old[c], [k]: v, ...(k === 'jarPath' && { useJar: !!v.trim() }) } }));
 
-  const cancel = () => {
-    onPreviewTheme(state.settings.theme);
-    onClose();
-  };
+  const cancel = onClose;
+  const hasPicture = !!(s.background.trim() || s.backgroundRs3.trim() || s.backgroundRotate);
+
+  useEffect(() => {
+    onPreview(lookOf(s));
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escape closes from anywhere, not only while something inside has focus.
+  const cancelRef = useRef(cancel);
+  cancelRef.current = cancel;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) cancelRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && cancel()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Settings" onKeyDown={(e) => e.key === 'Escape' && cancel()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Settings">
         <div className="modal-head">
           <h2>Settings</h2>
           <button className="icon-btn" title="Close" onClick={cancel}>
@@ -64,10 +130,7 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                       key={t.id}
                       className={`theme-card ${s.theme === t.id ? 'selected' : ''}`}
                       style={{ background: t.colors.panel, color: t.colors.text, borderColor: t.colors.border }}
-                      onClick={() => {
-                        set('theme', t.id);
-                        onPreviewTheme(t.id);
-                      }}
+                      onClick={() => set('theme', t.id)}
                     >
                       <b>{t.name}</b>
                       <span className="swatches">
@@ -80,72 +143,140 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                 </div>
               </div>
               <div className="field">
-                <label htmlFor="bg">Background picture</label>
-                <input
-                  id="bg"
-                  className="input mono"
-                  placeholder="None (for example ~/Pictures/gielinor.png)"
-                  value={s.background}
-                  onChange={(e) => set('background', e.target.value)}
-                />
-                <span className="hint">
-                  Shown behind the middle area. PNG, JPEG, WebP or GIF; it stays on this computer.
-                  {state.flatpak && ' The Flatpak can read your Pictures and Documents folders and RuneLite’s screenshots.'}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                  <button className="btn" onClick={() => onOpenFolder('screenshots')}>
-                    <FolderOpen size={14} /> RuneLite screenshots
-                  </button>
-                  <label htmlFor="bg-dim" className="dim" style={{ fontSize: 12 }}>
-                    Darken
-                  </label>
-                  <input
-                    id="bg-dim"
-                    type="range"
-                    min={0}
-                    max={90}
-                    step={5}
-                    value={s.backgroundDim}
-                    disabled={!s.background.trim() && !s.backgroundRs3.trim() && !s.backgroundRotate}
-                    onChange={(e) => set('backgroundDim', Number(e.target.value))}
-                  />
-                  <span className="mono dim" style={{ fontSize: 12 }}>
-                    {s.backgroundDim}%
-                  </span>
-                  <label htmlFor="bg-blur" className="dim" style={{ fontSize: 12 }}>
-                    Blur
-                  </label>
-                  <input
-                    id="bg-blur"
-                    type="range"
-                    min={0}
-                    max={30}
-                    step={1}
-                    value={s.backgroundBlur}
-                    onChange={(e) => set('backgroundBlur', Number(e.target.value))}
-                  />
-                  <span className="mono dim" style={{ fontSize: 12 }}>
-                    {s.backgroundBlur}px
-                  </span>
+                <label htmlFor="accent">Accent colour</label>
+                <div className="accent-row">
+                  <input id="accent" type="color" value={s.accent || findTheme(s.theme).colors.accent} onChange={(e) => set('accent', e.target.value)} />
+                  <span className="mono dim">{s.accent || 'The theme’s own'}</span>
+                  {s.accent && (
+                    <button className="btn small" onClick={() => set('accent', '')}>
+                      <RotateCcw size={12} /> Use the theme’s
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="field">
-                <label htmlFor="bg-rs3">RuneScape 3 picture</label>
-                <input
-                  id="bg-rs3"
-                  className="input mono"
-                  placeholder="Same as above"
-                  value={s.backgroundRs3}
-                  onChange={(e) => set('backgroundRs3', e.target.value)}
-                />
-              </div>
-              <label className="check">
-                <input type="checkbox" checked={s.backgroundRotate} onChange={(e) => set('backgroundRotate', e.target.checked)} />
-                <span>
-                  Rotate RuneLite screenshots
-                  <span className="hint dim">On the Old School tab, shows a random screenshot of yours, changing every five minutes.</span>
+
+              <div className="group">
+                <h3>Layout</h3>
+                <Slider id="ui-scale" label="Size" min={80} max={140} step={5} value={s.uiScale} unit="%" onChange={(v) => set('uiScale', v)} />
+                <Slider id="radius" label="Corners" min={0} max={20} step={1} value={s.radius} unit="px" onChange={(v) => set('radius', v)} />
+                <div className="field-row">
+                  <div className="field">
+                    <label htmlFor="density">Spacing</label>
+                    <select id="density" className="select" value={s.density} onChange={(e) => set('density', e.target.value as Settings['density'])}>
+                      <option value="comfortable">Comfortable</option>
+                      <option value="compact">Compact</option>
+                    </select>
+                  </div>
+                  <label className="check" style={{ alignSelf: 'end', paddingBottom: 6 }}>
+                    <input type="checkbox" checked={s.showHero} onChange={(e) => set('showHero', e.target.checked)} />
+                    <span>Show the logo and title</span>
+                  </label>
+                </div>
+                <div className="field-row">
+                  <label className="check">
+                    <input type="checkbox" checked={!s.hideAccounts} onChange={(e) => set('hideAccounts', !e.target.checked)} />
+                    <span>Accounts panel</span>
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" checked={!s.hideInstances} onChange={(e) => set('hideInstances', !e.target.checked)} />
+                    <span>Running games panel</span>
+                  </label>
+                </div>
+                <span className="hint dim" style={{ fontSize: 11.5 }}>
+                  The buttons at both ends of the top bar fold the panels away too.
                 </span>
-              </label>
+              </div>
+
+              <div className="group">
+                <h3>Background</h3>
+                <div className="field">
+                  <label htmlFor="bg">Picture</label>
+                  <input
+                    id="bg"
+                    className="input mono"
+                    placeholder="None (for example ~/Pictures/gielinor.png)"
+                    value={s.background}
+                    onChange={(e) => set('background', e.target.value)}
+                  />
+                  <span className="hint">
+                    Shown behind the middle area. PNG, JPEG, WebP or GIF; it stays on this computer.
+                    {state.flatpak && ' The Flatpak can read your Pictures and Documents folders and RuneLite’s screenshots.'}
+                  </span>
+                </div>
+                <div className="field">
+                  <label htmlFor="bg-rs3">RuneScape 3 picture</label>
+                  <input
+                    id="bg-rs3"
+                    className="input mono"
+                    placeholder="Same as above"
+                    value={s.backgroundRs3}
+                    onChange={(e) => set('backgroundRs3', e.target.value)}
+                  />
+                </div>
+                <Slider
+                  id="bg-dim"
+                  label="Darken"
+                  min={0}
+                  max={90}
+                  step={5}
+                  value={s.backgroundDim}
+                  unit="%"
+                  disabled={!hasPicture}
+                  onChange={(v) => set('backgroundDim', v)}
+                />
+                <Slider
+                  id="bg-blur"
+                  label="Blur"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={s.backgroundBlur}
+                  unit="px"
+                  disabled={!hasPicture}
+                  onChange={(v) => set('backgroundBlur', v)}
+                />
+                <div className="field-row">
+                  <div className="field">
+                    <label htmlFor="bg-pos">Keep in view</label>
+                    <select
+                      id="bg-pos"
+                      className="select"
+                      value={s.backgroundPosition}
+                      disabled={!hasPicture}
+                      onChange={(e) => set('backgroundPosition', e.target.value as Settings['backgroundPosition'])}
+                    >
+                      <option value="center">The middle</option>
+                      <option value="top">The top</option>
+                      <option value="bottom">The bottom</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{ justifyContent: 'end' }}>
+                    <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => onOpenFolder('screenshots')}>
+                      <FolderOpen size={14} /> RuneLite screenshots
+                    </button>
+                  </div>
+                </div>
+                <label className="check">
+                  <input type="checkbox" checked={s.backgroundRotate} onChange={(e) => set('backgroundRotate', e.target.checked)} />
+                  <span>
+                    Rotate RuneLite screenshots
+                    <span className="hint dim">On the Old School tab, shows a random screenshot of yours instead of the picture.</span>
+                  </span>
+                </label>
+                {s.backgroundRotate && (
+                  <Slider
+                    id="rotate-min"
+                    label="Change every"
+                    min={1}
+                    max={60}
+                    step={1}
+                    value={s.rotateMinutes}
+                    unit=" min"
+                    onChange={(v) => set('rotateMinutes', v)}
+                  />
+                )}
+              </div>
+
               <label className="check">
                 <input type="checkbox" checked={s.reduceMotion} onChange={(e) => set('reduceMotion', e.target.checked)} />
                 <span>
@@ -250,8 +381,8 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                     onChange={(e) => set('pluginProjects', e.target.value)}
                   />
                   <span className="hint">
-                    One Gradle project per line. Build &amp; play builds each one, copies the jars to the sideloaded plugins folder and starts (or restarts) your
-                    characters only if every build worked.
+                    One Gradle project per line. Build &amp; play builds each one, copies the jars to the sideloaded plugins folder and starts (or restarts)
+                    your characters only if every build worked.
                   </span>
                 </div>
                 <div className="field-row">
@@ -301,7 +432,14 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                 <input type="checkbox" checked={s.notifications} onChange={(e) => set('notifications', e.target.checked)} />
                 <span>
                   Desktop notifications
-                  <span className="hint dim">For crashes, expired sessions and update checks that fail.</span>
+                  <span className="hint dim">For crashes, expired sessions, new Lodestone versions and update checks that fail.</span>
+                </span>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={s.checkUpdates} onChange={(e) => set('checkUpdates', e.target.checked)} />
+                <span>
+                  Check for new versions of Lodestone
+                  <span className="hint dim">Asks GitHub for the latest release at start-up and every six hours.</span>
                 </span>
               </label>
               <div className="field">
@@ -368,8 +506,8 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                 </h3>
                 <ul className="list">
                   <li>
-                    No telemetry, analytics or crash reporting. Lodestone talks only to Jagex, GitHub (RuneLite releases), the HDOS CDN and Jagex's RS3 package
-                    server.
+                    No telemetry, analytics or crash reporting. Lodestone talks only to Jagex, GitHub (RuneLite and Lodestone releases), the HDOS CDN and
+                    Jagex's RS3 package server.
                   </li>
                   <li>You sign in on Jagex's own page. Your password and the long-lived sign-in tokens are never stored.</li>
                   <li>
@@ -379,7 +517,13 @@ export default function SettingsModal({ state, onPreviewTheme, onSave, onClose, 
                   <li>Not affiliated with or endorsed by Jagex. RuneScape and Old School RuneScape are trademarks of Jagex Ltd.</li>
                 </ul>
               </div>
-              <div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn" onClick={onCheckUpdate}>
+                  <RefreshCw size={14} /> Check for updates
+                </button>
+                <button className="btn" onClick={() => onOpenFolder('releases')}>
+                  <ExternalLink size={14} /> Releases
+                </button>
                 <button className="btn" onClick={() => onOpenFolder('website')}>
                   <ExternalLink size={14} /> Source code
                 </button>

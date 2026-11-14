@@ -41,18 +41,19 @@ interface Props {
   building?: boolean;
   /** Time played by the chosen character, and the start times of its games still running. */
   played?: { entry?: Playtime; live: number[] } | null;
-  /** A data: URL of the picture behind this area, how much to darken it (percent) and blur it (px). */
+  /** A URL of the picture behind this area, how much to darken it (percent) and blur it (px). */
   background?: string;
   backgroundDim?: number;
   backgroundBlur?: number;
+  /** Which part of the picture stays in view. */
+  backgroundPosition?: 'center' | 'top' | 'bottom';
+  /** Hide the big logo and title. */
+  hideHero?: boolean;
 }
 
 /** The choices for an extra row's client: each client of the game, and its custom jar if one is set. */
 function rowChoices(clients: ClientId[], jars: Partial<Record<ClientId, string>>) {
-  return clients.flatMap((c) => [
-    { value: c, label: CLIENTS[c].name },
-    ...(jars[c] ? [{ value: `${c}+jar`, label: `${CLIENTS[c].name} · custom jar` }] : []),
-  ]);
+  return clients.flatMap((c) => [{ value: c, label: CLIENTS[c].name }, ...(jars[c] ? [{ value: `${c}+jar`, label: `${CLIENTS[c].name} · custom jar` }] : [])]);
 }
 
 function CharacterSelect(p: { accounts: Account[]; value: Pick; taken: Pick[]; onChange: (v: Pick) => void; label: string }) {
@@ -197,6 +198,7 @@ export default function Stage(p: Props) {
           style={{
             // Darker towards the bottom, where the Play controls sit.
             backgroundImage: `linear-gradient(color-mix(in srgb, var(--bg) ${dim * 100}%, transparent), color-mix(in srgb, var(--bg) ${Math.min(100, dim * 100 + 25)}%, transparent)), url("${p.background}")`,
+            backgroundPosition: `center ${p.backgroundPosition ?? 'center'}`,
             filter: blur ? `blur(${blur}px)` : undefined,
             transform: blur ? `scale(${1 + blur / 150})` : undefined,
           }}
@@ -204,11 +206,15 @@ export default function Stage(p: Props) {
       )}
       <div className="stage-scroll">
         <div className="stage-inner">
-          <div className="hero">
-            <img className="hero-logo" src={logo} alt="" />
-            <h1 className="title">{g.title}</h1>
-            <span className="subtitle">{g.sub}</span>
-          </div>
+          {p.hideHero ? (
+            <h1 className="sr-only">{g.title}</h1>
+          ) : (
+            <div className="hero">
+              <img className="hero-logo" src={logo} alt="" />
+              <h1 className="title">{g.title}</h1>
+              <span className="subtitle">{g.sub}</span>
+            </div>
+          )}
 
           <div className="section-label">Client</div>
           <div className="clients" role="radiogroup" aria-label="Client">
@@ -366,7 +372,11 @@ export default function Stage(p: Props) {
                 )}
               </div>
               {p.played && <Played {...p.played} />}
-              {expired && <span className="dim">{all.length > 1 ? "One of these accounts' sessions has" : "This account's session has"} expired. Use “Sign in again” in the accounts list.</span>}
+              {expired && (
+                <span className="dim">
+                  {all.length > 1 ? "One of these accounts' sessions has" : "This account's session has"} expired. Use “Sign in again” in the accounts list.
+                </span>
+              )}
               {!playable.length && <span className="dim">None of your accounts has a character yet. Create one in-game first, then refresh.</span>}
             </div>
           )}

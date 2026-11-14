@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ago, bytes, duration, isErrorLine, isStackLine, loadRows, makePick, playtimeSums, resolvePick, splitPick, uptime } from './format';
-import { THEMES, findTheme, mix, themeVars } from './themes';
+import { ago, bytes, duration, isErrorLine, isStackLine, loadRows, makePick, noteBlocks, playtimeSums, resolvePick, splitPick, uptime } from './format';
+import { THEMES, findTheme, mix, themeVars, withAccent } from './themes';
 import type { Account } from './types';
 
 const acct = (id: string, chars: string[], signedIn = true): Account => ({
@@ -12,6 +12,16 @@ const acct = (id: string, chars: string[], signedIn = true): Account => ({
 });
 
 describe('format', () => {
+  it('release notes', () => {
+    const md = '## New\n\n- **Updates** from [GitHub](https://x)\n- `Ctrl+Enter`\n  plays\n\nSome text\nmore.\n\n<b>raw</b>';
+    expect(noteBlocks(md)).toEqual([
+      { kind: 'heading', text: 'New' },
+      { kind: 'list', items: ['Updates from GitHub', 'Ctrl+Enter plays'] },
+      { kind: 'para', text: 'Some text more.' },
+      { kind: 'para', text: '<b>raw</b>' },
+    ]);
+  });
+
   it('sizes', () => {
     expect(bytes(512)).toBe('512 B');
     expect(bytes(2048)).toBe('2.0 KB');
@@ -54,6 +64,13 @@ describe('themes', () => {
 
   it('mixes', () => {
     expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080');
+  });
+
+  it('takes a custom accent only when it is a colour', () => {
+    const t = findTheme('void');
+    expect(withAccent(t, '#12ab34').colors.accent).toBe('#12ab34');
+    expect(withAccent(t, '').colors.accent).toBe(t.colors.accent);
+    expect(withAccent(t, 'red').colors.accent).toBe(t.colors.accent);
   });
 });
 

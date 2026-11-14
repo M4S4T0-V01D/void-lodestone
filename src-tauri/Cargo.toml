@@ -1,6 +1,6 @@
 [package]
 name = "void-lodestone"
-version = "0.2.0"
+version = "0.3.0"
 description = "VOID Lodestone: a fast, open-source launcher for RuneLite, HDOS and RuneScape 3 with multiple Jagex accounts"
 authors = ["M4S4T0-V01D"]
 license = "GPL-3.0-or-later"

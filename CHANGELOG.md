@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-11-14
+
+- Lodestone updates itself: it looks for new releases on GitHub at start-up and every six hours (turn it off in Settings), shows an Update button in the top bar, and installs the new Flatpak after checking its checksum. Restart when your games are done.
+- What's new: the release notes appear once after an update.
+- Keyboard shortcuts: Ctrl+Enter plays, Ctrl+, opens Settings.
+- Settings opens and responds much faster: dialogs no longer blur the window behind them, animations pause while one is open, and Save closes at once.
+- Background pictures load as raw bytes instead of a huge data URL, and the blur is drawn once into the picture rather than by the webview on every repaint.
+- Accounts are no longer looked up in the keyring on every refresh.
+- New appearance options with a live preview: accent colour, UI size (80–140%), compact spacing, corner roundness, hiding the logo and title, which part of the background stays in view, and how often screenshots rotate.
+- Fold the accounts and running-games panels away from buttons in the top bar.
+- The layout adapts to narrow windows and large UI sizes.
+- Escape closes Settings from anywhere in the window.
+
 ## 0.2.0 - 2026-10-29
 
 - Add an account in a Lodestone window or in your own browser.

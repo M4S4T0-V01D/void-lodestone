@@ -94,4 +94,15 @@ describe('Stage', () => {
     render(<Stage {...base} game="osrs" accounts={[]} pick="" onPlay={noop} />);
     expect(screen.getByText('Add a Jagex account to play')).toBeTruthy();
   });
+
+  it('hides the logo and title but keeps the heading', () => {
+    const { container } = render(<Stage {...base} game="osrs" accounts={accounts} pick="a:1" onPlay={noop} hideHero />);
+    expect(container.querySelector('.hero')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+  });
+
+  it('places the background picture', () => {
+    const { container } = render(<Stage {...base} game="osrs" accounts={accounts} pick="a:1" onPlay={noop} background="blob:x" backgroundPosition="top" />);
+    expect((container.querySelector('.stage-bg') as HTMLElement).style.backgroundPosition).toBe('center top');
+  });
 });

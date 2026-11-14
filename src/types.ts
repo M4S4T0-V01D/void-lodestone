@@ -46,6 +46,22 @@ export interface Settings {
   backgroundRotate: boolean;
   /** Blur in pixels. */
   backgroundBlur: number;
+  /** Which part of the picture stays in view. */
+  backgroundPosition: 'center' | 'top' | 'bottom';
+  /** Minutes between rotating screenshots. */
+  rotateMinutes: number;
+  /** #rrggbb used instead of the theme's accent; empty for the theme's own. */
+  accent: string;
+  /** Page zoom in percent. */
+  uiScale: number;
+  density: 'comfortable' | 'compact';
+  /** Corner roundness in pixels. */
+  radius: number;
+  /** The big logo and title above the clients. */
+  showHero: boolean;
+  /** Side panels folded away from the top bar. */
+  hideAccounts: boolean;
+  hideInstances: boolean;
   /** The first JDWP port tried for debug launches. */
   debugPort: number;
   /** Plugin project folders for Build & play, one per line. */
@@ -53,6 +69,10 @@ export interface Settings {
   buildTask: string;
   notifications: boolean;
   closeToTray: boolean;
+  /** Look for new Lodestone releases on GitHub. */
+  checkUpdates: boolean;
+  /** The version whose notes were last shown. */
+  seenVersion: string;
   groups: Group[];
   lastGame: string;
   lastClient: string;
@@ -166,6 +186,27 @@ export interface AppState {
   pluginPackages: string[];
   /** A tray icon is shown. */
   tray: boolean;
+  /** A newer Lodestone release, once one has been found. */
+  update: Release | null;
+}
+
+/** A Lodestone release on GitHub. */
+export interface Release {
+  version: string;
+  /** Markdown. */
+  notes: string;
+  url: string;
+  publishedAt: string;
+  newer: boolean;
+  /** This copy can download and install it itself. */
+  installable: boolean;
+}
+
+export interface UpdateProgress {
+  phase: 'downloading' | 'installing' | 'done' | 'error';
+  received: number;
+  total: number;
+  message: string;
 }
 
 /** A character chosen to play: `${account id}:${character id}`. */

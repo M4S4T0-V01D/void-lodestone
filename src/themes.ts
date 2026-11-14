@@ -165,6 +165,11 @@ export function themeVars(t: Theme): Record<string, string> {
   };
 }
 
+/** The theme with its accent swapped for `accent` (#rrggbb), if that's a colour. */
+export function withAccent(t: Theme, accent?: string): Theme {
+  return accent && /^#[0-9a-f]{6}$/i.test(accent) ? { ...t, colors: { ...t.colors, accent: accent.toLowerCase() } } : t;
+}
+
 export function applyTheme(t: Theme): void {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(themeVars(t))) root.style.setProperty(k, v);

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "The main window only. The Jagex sign-in window gets no capability, so its pages can't reach the app.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:webview:allow-set-webview-zoom"]
 }

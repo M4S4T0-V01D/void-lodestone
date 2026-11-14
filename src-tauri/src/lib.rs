@@ -1,6 +1,6 @@
 //! VOID Lodestone: a launcher for RuneLite, HDOS and RuneScape 3 with any number of Jagex accounts.
 //! No telemetry: the only hosts contacted are Jagex's (sign-in, sessions, RS3 download), GitHub (RuneLite) and
-//! HDOS's CDN.
+//! HDOS's CDN, plus GitHub for Lodestone's own releases (which can be turned off).
 
 mod clients;
 mod config;
@@ -12,6 +12,7 @@ mod notify;
 mod playtime;
 mod secrets;
 mod tray;
+mod update;
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -33,6 +34,8 @@ pub struct App {
     expired: Mutex<HashSet<String>>,
     /// The last check of each account's session.
     health: Mutex<HashMap<String, Health>>,
+    /// Whether each account has a saved session, so building the state doesn't ask the keyring every time.
+    has_session: Mutex<HashMap<String, bool>>,
     instances: Arc<Mutex<Vec<Instance>>>,
     /// Games that have exited, newest last, so their logs can still be read.
     ended: Arc<Mutex<Vec<Instance>>>,
@@ -44,11 +47,25 @@ pub struct App {
     build: Mutex<Option<u32>>,
     /// Whether there's a tray icon to close to.
     tray: AtomicBool,
+    /// The newest Lodestone release seen on GitHub.
+    release: Mutex<Option<update::Release>>,
+    /// An update is being downloaded or installed.
+    updating: AtomicBool,
 }
 
 impl App {
     async fn secrets(&self) -> &secrets::Backend {
         self.secrets.get_or_init(secrets::Backend::open).await
+    }
+
+    /// Whether the account has a saved session; asks the keyring only the first time.
+    async fn has_session(&self, id: &str) -> bool {
+        if let Some(&yes) = self.has_session.lock().unwrap().get(id) {
+            return yes;
+        }
+        let yes = self.secrets().await.get(id).await.is_some();
+        self.has_session.lock().unwrap().insert(id.to_string(), yes);
+        yes
     }
 
     fn save(&self, store: &Store) -> Result<(), String> {
@@ -142,6 +159,8 @@ struct StateView {
     /// The Java packages of the user's plugin projects, highlighted in logs.
     plugin_packages: Vec<String>,
     tray: bool,
+    /// A newer release, once one has been found.
+    update: Option<update::Release>,
 }
 
 async fn view(st: &App) -> StateView {
@@ -150,7 +169,7 @@ async fn view(st: &App) -> StateView {
     let mut accounts = Vec::new();
     for a in store.accounts {
         let expired = st.expired.lock().unwrap().contains(&a.id);
-        let signed_in = !expired && backend.get(&a.id).await.is_some();
+        let signed_in = !expired && st.has_session(&a.id).await;
         let health = st.health.lock().unwrap().get(&a.id).cloned();
         accounts.push(AccountView {
             id: a.id,
@@ -176,6 +195,7 @@ async fn view(st: &App) -> StateView {
         data_dir: config::data_dir().to_string_lossy().into(),
         plugin_packages,
         tray: st.tray.load(Ordering::Relaxed),
+        update: st.release.lock().unwrap().clone().filter(|r| r.newer),
     }
 }
 
@@ -256,6 +276,7 @@ async fn sign_in(app: AppHandle, st: &App, existing: Option<String>, mode: login
         target
     };
     st.secrets().await.set(&target, &out.session_id).await?;
+    st.has_session.lock().unwrap().insert(target.clone(), true);
     st.set_expired(&target, false);
     st.set_health(&target, "ok");
     Ok(view(st).await)
@@ -289,6 +310,7 @@ async fn remove_account(st: State<'_, App>, id: String) -> Result<StateView, Str
         st.save(&store)?;
     }
     st.secrets().await.delete(&id).await;
+    st.has_session.lock().unwrap().remove(&id);
     st.set_expired(&id, false);
     st.health.lock().unwrap().remove(&id);
     if !id.is_empty() && !id.contains('/') && !id.contains("..") {
@@ -321,7 +343,9 @@ fn move_account(st: State<'_, App>, id: String, to: usize) -> Result<(), String>
 
 /// Re-read each account's characters with its saved session, which also tells which sessions have expired.
 async fn check_account(st: &App, id: &str, wait: Duration) -> Result<Option<String>, String> {
-    let Some(session) = st.secrets().await.get(id).await else {
+    let session = st.secrets().await.get(id).await;
+    st.has_session.lock().unwrap().insert(id.to_string(), session.is_some());
+    let Some(session) = session else {
         st.set_expired(id, true);
         st.set_health(id, "expired");
         return Ok(None);
@@ -764,10 +788,10 @@ fn cancel_build(st: State<'_, App>) {
     }
 }
 
-/// A picture from disk as a data: URL, for the background. Only pictures are read.
+/// A picture from disk as raw bytes (an ArrayBuffer on the JS side, no base64), for the background. Only pictures
+/// are read.
 #[tauri::command]
-async fn background_image(path: String) -> Result<String, String> {
-    use base64::Engine;
+async fn background_image(path: String) -> Result<tauri::ipc::Response, String> {
     let path = launch::expand_home(path.trim());
     let bytes = tokio::fs::read(&path).await.map_err(|e| {
         let hint = if config::in_flatpak() { " (the Flatpak can read your Pictures and Documents folders)" } else { "" };
@@ -776,8 +800,8 @@ async fn background_image(path: String) -> Result<String, String> {
     if bytes.len() > 25 << 20 {
         return Err("That picture is over 25 MB; please use a smaller one.".into());
     }
-    let kind = launch::image_type(&bytes).ok_or("That file isn't a PNG, JPEG, WebP or GIF picture.")?;
-    Ok(format!("data:{kind};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
+    launch::image_type(&bytes).ok_or("That file isn't a PNG, JPEG, WebP or GIF picture.")?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[derive(Serialize)]
@@ -816,6 +840,7 @@ fn read_log(st: State<'_, App>, pid: u32, source: String, from: Option<u64>) -> 
 fn open_folder(st: State<'_, App>, which: String) -> Result<(), String> {
     let target: std::ffi::OsString = match which.as_str() {
         "website" => "https://github.com/M4S4T0-V01D/void-lodestone".into(),
+        "releases" => update::RELEASES.into(),
         dir => {
             let dir = match dir {
                 "logs" => config::data_dir().join("logs"),
@@ -837,6 +862,54 @@ fn open_folder(st: State<'_, App>, which: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("couldn't open the folder: {e}"))
+}
+
+/// Look for a newer Lodestone on GitHub now. Returns the latest release, newer or not.
+#[tauri::command]
+async fn check_update(app: AppHandle, st: State<'_, App>) -> Result<update::Release, String> {
+    let rel = update::latest(&st.http).await?;
+    *st.release.lock().unwrap() = Some(rel.clone());
+    if rel.newer {
+        let _ = app.emit("update-available", &rel);
+    }
+    Ok(rel)
+}
+
+/// The notes of the running version's release, for "What's new".
+#[tauri::command]
+async fn release_notes(st: State<'_, App>) -> Result<update::Release, String> {
+    update::of_version(&st.http, env!("CARGO_PKG_VERSION")).await
+}
+
+/// Download and install the newer release, streaming "update-progress" events.
+#[tauri::command]
+async fn install_update(app: AppHandle, st: State<'_, App>) -> Result<(), String> {
+    let rel = st.release.lock().unwrap().clone().filter(|r| r.newer).ok_or("There's no newer version to install.")?;
+    if st.updating.swap(true, Ordering::SeqCst) {
+        return Err("The update is already being installed.".into());
+    }
+    let emitter = app.clone();
+    let emit = move |p: update::Progress| {
+        let _ = emitter.emit("update-progress", p);
+    };
+    let res = update::install(&st.http, &rel, &emit).await;
+    st.updating.store(false, Ordering::SeqCst);
+    if let Err(e) = &res {
+        emit(update::Progress { phase: "error", received: 0, total: 0, message: e.clone() });
+    }
+    res
+}
+
+/// Quit and start the newly installed version. Refused while games run, so they aren't taken down with it.
+#[tauri::command]
+fn restart_app(app: AppHandle, st: State<'_, App>) -> Result<(), String> {
+    if !st.instances.lock().unwrap().is_empty() {
+        return Err("Stop your games first, or restart Lodestone later; the update is already installed.".into());
+    }
+    update::relaunch()?;
+    let _ = std::fs::remove_file(instance_socket());
+    app.exit(0);
+    Ok(())
 }
 
 /// Where a running Lodestone listens, so starting it again (say from the menu while it sits in the tray) shows that
@@ -898,12 +971,15 @@ pub fn run() {
         login_open: Mutex::new(false),
         expired: Mutex::new(HashSet::new()),
         health: Mutex::new(HashMap::new()),
+        has_session: Mutex::new(HashMap::new()),
         instances: Arc::new(Mutex::new(Vec::new())),
         ended: Arc::new(Mutex::new(Vec::new())),
         downloads: tokio::sync::Mutex::new(()),
         stopping: Mutex::new(HashSet::new()),
         build: Mutex::new(None),
         tray: AtomicBool::new(false),
+        release: Mutex::new(None),
+        updating: AtomicBool::new(false),
     };
     tauri::Builder::default()
         .manage(state)
@@ -955,6 +1031,28 @@ pub fn run() {
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(3600)).await;
+                }
+            });
+            // Look for a new Lodestone shortly after start-up and every six hours, telling the user once per version.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut told = String::new();
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                loop {
+                    let st = handle.state::<App>();
+                    if st.store.lock().unwrap().settings.check_updates {
+                        if let Ok(rel) = update::latest(&st.http).await {
+                            *st.release.lock().unwrap() = Some(rel.clone());
+                            if rel.newer && told != rel.version {
+                                told = rel.version.clone();
+                                let _ = handle.emit("update-available", &rel);
+                                if notify_enabled(&st) {
+                                    notify(format!("VOID Lodestone {} is out", rel.version), "Open Lodestone to install it.".into());
+                                }
+                            }
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
                 }
             });
             // Re-check sessions now and then, so an expired one shows up before Play is pressed. The window does
@@ -1027,6 +1125,10 @@ pub fn run() {
             read_log,
             background_image,
             open_folder,
+            check_update,
+            release_notes,
+            install_update,
+            restart_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running VOID Lodestone");

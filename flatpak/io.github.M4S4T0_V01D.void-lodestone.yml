@@ -22,6 +22,9 @@ finish-args:
   # The tray icon and desktop notifications.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
+  # Self-updates: the release's bundle is installed with the host's flatpak (flatpak-spawn --host). Drop this line
+  # for a store build that gets its updates from the store.
+  - --talk-name=org.freedesktop.Flatpak
 
 modules:
   # RuneScape 3 links against GTK 2 and OpenSSL 1.1, which the runtime no longer ships.

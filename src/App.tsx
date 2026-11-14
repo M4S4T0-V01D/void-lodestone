@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Settings as Cog, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpCircle, CheckCircle2, Settings as Cog, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { api, errorText, events, type Folder } from './api';
 import logo from './assets/logo.svg';
+import { makeBackground, type Background } from './background';
 import Accounts from './components/Accounts';
 import BuildModal, { type Build } from './components/BuildModal';
 import Instances from './components/Instances';
@@ -10,30 +11,42 @@ import LoginOverlay from './components/LoginOverlay';
 import LogViewer from './components/LogViewer';
 import SettingsModal from './components/SettingsModal';
 import Stage from './components/Stage';
+import UpdateModal from './components/UpdateModal';
 import { characterName, CLIENTS, loadRows, resolvePick, splitPick, validPick, type Row } from './format';
-import { applyTheme, findTheme } from './themes';
-import type { AppState, ClientId, Game, Group, Instance, LoginMode, LoginStatus, Pick, Playtime, Progress, Settings } from './types';
+import { applyTheme, findTheme, withAccent } from './themes';
+import type { AppState, ClientId, Game, Group, Instance, LoginMode, LoginStatus, Pick, Playtime, Progress, Release, Settings, UpdateProgress } from './types';
 
 /** `crashed`: the game that crashed, for the Open log and Restart buttons. */
 type Notice = { kind: 'ok' | 'error' | 'warn'; text: string; crashed?: Instance };
-
-/** How often the rotating background changes. */
-const ROTATE_MS = 5 * 60 * 1000;
 
 function crashText(i: Instance): string {
   const why = i.crashLine ? `: ${i.crashLine}` : i.exitCode ? ` (exit code ${i.exitCode}).` : ' within a minute of starting.';
   return `${i.character} (${CLIENTS[i.client].name}) crashed${why}`;
 }
 
-function useTheme(theme: string | undefined, reduceMotion: boolean | undefined) {
+/** The appearance settings that apply to the whole window: colours, motion, corners and zoom. */
+function useLook(s: Settings | undefined) {
+  const theme = s?.theme;
+  const accent = s?.accent ?? '';
   useEffect(() => {
     if (!theme) return;
-    applyTheme(findTheme(theme));
+    applyTheme(withAccent(findTheme(theme), accent));
     localStorage.setItem('lodestone.theme', theme);
-  }, [theme]);
+    localStorage.setItem('lodestone.accent', accent);
+  }, [theme, accent]);
+  const reduceMotion = !!s?.reduceMotion;
   useEffect(() => {
-    document.documentElement.classList.toggle('reduce-motion', !!reduceMotion);
+    document.documentElement.classList.toggle('reduce-motion', reduceMotion);
   }, [reduceMotion]);
+  const radius = s?.radius ?? 10;
+  useEffect(() => {
+    document.documentElement.style.setProperty('--radius', `${Math.min(20, Math.max(0, radius))}px`);
+  }, [radius]);
+  const scale = s?.uiScale ?? 100;
+  useEffect(() => {
+    if (!s) return;
+    api.setZoom(Math.min(140, Math.max(80, scale)) / 100).catch(() => {});
+  }, [scale, !!s]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export default function App() {
@@ -60,7 +73,11 @@ export default function App() {
       return [];
     }
   });
-  const [background, setBackground] = useState('');
+  /** The picture file's bytes, and what's drawn from them. */
+  const [picture, setPicture] = useState<Blob | null>(null);
+  const [background, setBackground] = useState<Background | null>(null);
+  /** Appearance settings shown while the Settings window is open, before they're saved. */
+  const [look, setLook] = useState<Partial<Settings> | null>(null);
   const [logOf, setLogOf] = useState<{ inst: Instance; atError: boolean } | null>(null);
   const [playtime, setPlaytime] = useState<Record<string, Playtime>>({});
   const [restarting, setRestarting] = useState<number[]>([]);
@@ -69,8 +86,15 @@ export default function App() {
   const [shot, setShot] = useState(0);
   /** Starts a saved group; the tray's menu calls it. Set on every render so it sees the current state. */
   const playGroupRef = useRef<(n: number) => void>(() => {});
+  /** What the keyboard shortcuts do, set on every render like playGroupRef. */
+  const keysRef = useRef<{ play: () => void; settings: () => void }>({ play: () => {}, settings: () => {} });
+  /** A newer Lodestone release, and the dialog showing it (or the running version's notes). */
+  const [update, setUpdate] = useState<Release | null>(null);
+  const [updateView, setUpdateView] = useState<{ release: Release; mode: 'update' | 'news' } | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
 
-  useTheme(state?.settings.theme, state?.settings.reduceMotion);
+  const shown: Settings | undefined = state ? (look ? { ...state.settings, ...look } : state.settings) : undefined;
+  useLook(shown);
 
   const fail = useCallback((e: unknown) => setNotice({ kind: 'error', text: errorText(e) }), []);
 
@@ -84,6 +108,18 @@ export default function App() {
         setGame(s.settings.lastGame === 'rs3' ? 'rs3' : 'osrs');
         setOsrsClient(s.settings.lastClient === 'hdos' ? 'hdos' : 'runelite');
         setPick(resolvePick(s.settings.lastCharacter, s.accounts));
+        setUpdate(s.update);
+        // The first start of a new version shows its release notes once (not on a fresh install).
+        if (s.settings.seenVersion !== s.version) {
+          if (s.settings.seenVersion || s.accounts.length)
+            api
+              .releaseNotes()
+              .then((release) => alive && release.notes.trim() && setUpdateView((v) => v ?? { release, mode: 'news' }))
+              .catch(() => {});
+          const settings = { ...s.settings, seenVersion: s.version };
+          setState((old) => old && { ...old, settings: { ...old.settings, seenVersion: s.version } });
+          api.saveSettings(settings).catch(() => {});
+        }
         // Check the saved sessions in the background so expired ones show up before you press Play.
         if (s.accounts.length)
           api
@@ -123,6 +159,8 @@ export default function App() {
       }),
       events.buildOutput((l) => setBuild((old) => old && { ...old, lines: [...old.lines, l].slice(-5000) })),
       events.trayGroup((n) => playGroupRef.current(n)),
+      events.updateAvailable(setUpdate),
+      events.updateProgress(setUpdateProgress),
       events.sessionsChecked((lost) => {
         api
           .getState()
@@ -142,8 +180,22 @@ export default function App() {
     localStorage.setItem('lodestone.extras', JSON.stringify(extras));
   }, [extras]);
 
+  // Ctrl+Enter plays, Ctrl+, opens Settings; not while a dialog is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('.overlay')) return;
+      if (e.key === 'Enter') keysRef.current.play();
+      else if (e.key === ',') keysRef.current.settings();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // The rotating background: RuneLite's screenshots, on the Old School tab.
   const rotate = !!state?.settings.backgroundRotate && game === 'osrs';
+  const rotateMinutes = Math.max(1, state?.settings.rotateMinutes || 5);
   useEffect(() => {
     if (!rotate) return;
     let alive = true;
@@ -155,36 +207,62 @@ export default function App() {
         setShot(Math.floor(Math.random() * list.length));
       })
       .catch(() => {});
-    const t = setInterval(() => setShot((n) => n + 1 + Math.floor(Math.random() * 7)), ROTATE_MS);
+    const t = setInterval(() => setShot((n) => n + 1 + Math.floor(Math.random() * 7)), rotateMinutes * 60_000);
     return () => {
       alive = false;
       clearInterval(t);
     };
-  }, [rotate]);
+  }, [rotate, rotateMinutes]);
 
   const rs3Bg = state?.settings.backgroundRs3.trim() ?? '';
-  const bgPath =
-    rotate && shots.length ? shots[shot % shots.length]! : game === 'rs3' && rs3Bg ? rs3Bg : (state?.settings.background.trim() ?? '');
+  const bgPath = rotate && shots.length ? shots[shot % shots.length]! : game === 'rs3' && rs3Bg ? rs3Bg : (state?.settings.background.trim() ?? '');
   useEffect(() => {
     let alive = true;
     if (!bgPath) {
-      setBackground('');
+      setPicture(null);
       return;
     }
     api
       .backgroundImage(bgPath)
-      .then((url) => alive && setBackground(url))
+      .then((bytes) => alive && setPicture(new Blob([bytes])))
       .catch((e) => {
         if (!alive) return;
         // A screenshot that went away: try another next time.
         if (rotate && shots.length) return;
-        setBackground('');
+        setPicture(null);
         setNotice({ kind: 'warn', text: `Background picture: ${errorText(e)}` });
       });
     return () => {
       alive = false;
     };
   }, [bgPath, rotate, shots.length]);
+
+  // Draw the picture, blurred ahead of time. Waits a moment so dragging the blur slider doesn't redraw on every step.
+  const blur = Math.min(30, Math.max(0, shown?.backgroundBlur ?? 0));
+  useEffect(() => {
+    if (!picture) {
+      setBackground(null);
+      return;
+    }
+    let alive = true;
+    const t = setTimeout(() => {
+      const el = document.querySelector('.stage');
+      makeBackground(picture, blur, { width: el?.clientWidth ?? window.innerWidth, height: el?.clientHeight ?? window.innerHeight })
+        .then((b) => (alive ? setBackground(b) : URL.revokeObjectURL(b.url)))
+        .catch(() => {});
+    }, 120);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [picture, blur]);
+  // Let the old picture go once the new one has faded in.
+  const shownUrl = useRef('');
+  useEffect(() => {
+    const old = shownUrl.current;
+    shownUrl.current = background?.url ?? '';
+    if (old && old !== shownUrl.current) setTimeout(() => URL.revokeObjectURL(old), 1000);
+  }, [background]);
 
   useEffect(() => {
     if (notice?.kind !== 'ok') return;
@@ -198,7 +276,7 @@ export default function App() {
         <AlertTriangle /> <div>Lodestone couldn't start: {fatal}</div>
       </div>
     );
-  if (!state) return <div className="app" />;
+  if (!state || !shown) return <div className="app" />;
 
   const client: ClientId = game === 'rs3' ? 'rs3' : osrsClient;
   const current = resolvePick(pick, state.accounts);
@@ -302,6 +380,25 @@ export default function App() {
   };
 
   const play = () => startRows(rowsNow(), { remember: true });
+  keysRef.current = {
+    play: () => !launching && !busy && !signingIn && current && play(),
+    settings: () => setSettingsOpen(true),
+  };
+
+  const checkUpdate = () =>
+    api
+      .checkUpdate()
+      .then((r) => {
+        if (!r.newer) return setNotice({ kind: 'ok', text: `You have the latest version (${state.version}).` });
+        setUpdate(r);
+        setSettingsOpen(false);
+        setUpdateView({ release: r, mode: 'update' });
+      })
+      .catch(fail);
+  const installUpdate = () => {
+    setUpdateProgress({ phase: 'downloading', received: 0, total: 0, message: '' });
+    api.installUpdate().catch((e) => setUpdateProgress({ phase: 'error', received: 0, total: 0, message: errorText(e) }));
+  };
 
   const useJar = (on: boolean) => {
     if (client === 'rs3') return;
@@ -378,20 +475,35 @@ export default function App() {
     return state.instances.filter((i) => parts && i.accountId === parts[0] && i.characterId === parts[1]).map((i) => i.startedAt);
   };
 
-  const saveSettings = (settings: Settings) =>
-    api
-      .saveSettings(settings)
-      .then(() => {
-        setState((old) => old && { ...old, settings });
-        setSettingsOpen(false);
-      })
-      .catch(fail);
+  // Closes at once; the save runs behind it.
+  const saveSettings = (settings: Settings) => {
+    setLook(null);
+    setSettingsOpen(false);
+    persist(settings);
+  };
+  const closeSettings = () => {
+    setLook(null);
+    setSettingsOpen(false);
+  };
+  const fold = (side: 'hideAccounts' | 'hideInstances') => persist({ ...state.settings, [side]: !state.settings[side] });
 
   const openFolder = (which: Folder) => api.openFolder(which).catch(fail);
 
   return (
-    <div className="app">
+    <div
+      className={['app', shown.density === 'compact' && 'compact', state.settings.hideAccounts && 'no-left', state.settings.hideInstances && 'no-right']
+        .filter(Boolean)
+        .join(' ')}
+    >
       <header className="topbar">
+        <button
+          className="icon-btn"
+          title={state.settings.hideAccounts ? 'Show accounts' : 'Hide accounts'}
+          aria-pressed={!state.settings.hideAccounts}
+          onClick={() => fold('hideAccounts')}
+        >
+          {state.settings.hideAccounts ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
         <div className="brand">
           <img src={logo} alt="" />
           <span className="void">VOID</span>
@@ -415,35 +527,51 @@ export default function App() {
             no keyring
           </span>
         )}
-        <button className="icon-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
+        <button
+          className="icon-btn"
+          title={state.settings.hideInstances ? 'Show running games' : 'Hide running games'}
+          aria-pressed={!state.settings.hideInstances}
+          onClick={() => fold('hideInstances')}
+        >
+          {state.settings.hideInstances ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+          {state.settings.hideInstances && state.instances.length > 0 && <span className="fold-count">{state.instances.length}</span>}
+        </button>
+        {update && (
+          <button className="update-pill" title={`Lodestone ${update.version} is out`} onClick={() => setUpdateView({ release: update, mode: 'update' })}>
+            <ArrowUpCircle size={14} /> {updateProgress?.phase === 'done' ? 'Restart to update' : `Update ${update.version}`}
+          </button>
+        )}
+        <button className="icon-btn" title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
           <Cog size={16} />
         </button>
       </header>
 
       <div className="body">
-        <Accounts
-          accounts={state.accounts}
-          instances={state.instances}
-          pick={current}
-          busy={busy || signingIn}
-          onPick={setPick}
-          onAdd={() => setChoosing({})}
-          onReauth={(id) => setChoosing({ id })}
-          onRemove={(id) => withBusy(async () => setState(await api.removeAccount(id)))}
-          onRename={(id, label) =>
-            withBusy(async () => {
-              await api.renameAccount(id, label);
-              setState(await api.getState());
-            })
-          }
-          onMove={(id, to) =>
-            withBusy(async () => {
-              await api.moveAccount(id, to);
-              setState(await api.getState());
-            })
-          }
-          onRefresh={() => withBusy(async () => setState(await api.refreshAccounts()))}
-        />
+        {!state.settings.hideAccounts && (
+          <Accounts
+            accounts={state.accounts}
+            instances={state.instances}
+            pick={current}
+            busy={busy || signingIn}
+            onPick={setPick}
+            onAdd={() => setChoosing({})}
+            onReauth={(id) => setChoosing({ id })}
+            onRemove={(id) => withBusy(async () => setState(await api.removeAccount(id)))}
+            onRename={(id, label) =>
+              withBusy(async () => {
+                await api.renameAccount(id, label);
+                setState(await api.getState());
+              })
+            }
+            onMove={(id, to) =>
+              withBusy(async () => {
+                await api.moveAccount(id, to);
+                setState(await api.getState());
+              })
+            }
+            onRefresh={() => withBusy(async () => setState(await api.refreshAccounts()))}
+          />
+        )}
         <Stage
           game={game}
           client={client}
@@ -474,19 +602,23 @@ export default function App() {
           onBuild={game === 'osrs' && state.settings.pluginProjects.trim() ? buildAndPlay : undefined}
           building={build?.phase === 'running'}
           played={current ? { entry: playtime[current], live: live(current) } : null}
-          background={background}
-          backgroundDim={state.settings.backgroundDim}
-          backgroundBlur={state.settings.backgroundBlur}
+          background={background?.url}
+          backgroundDim={shown.backgroundDim}
+          backgroundBlur={background?.cssBlur}
+          backgroundPosition={shown.backgroundPosition}
+          hideHero={!shown.showHero}
         />
-        <Instances
-          instances={state.instances}
-          onStop={(pid) => api.stopInstance(pid).catch(fail)}
-          onStopAll={() => api.stopAll().catch(fail)}
-          onRestart={restart}
-          restarting={restarting}
-          onLogs={() => openFolder('logs')}
-          onLog={(inst) => setLogOf({ inst, atError: false })}
-        />
+        {!state.settings.hideInstances && (
+          <Instances
+            instances={state.instances}
+            onStop={(pid) => api.stopInstance(pid).catch(fail)}
+            onStopAll={() => api.stopAll().catch(fail)}
+            onRestart={restart}
+            restarting={restarting}
+            onLogs={() => openFolder('logs')}
+            onLog={(inst) => setLogOf({ inst, atError: false })}
+          />
+        )}
       </div>
 
       {notice && (
@@ -538,12 +670,20 @@ export default function App() {
       {build && <BuildModal build={build} onCancel={() => api.cancelBuild().catch(fail)} onClose={() => setBuild(null)} />}
 
       {settingsOpen && (
-        <SettingsModal
-          state={state}
-          onPreviewTheme={(id) => applyTheme(findTheme(id))}
-          onSave={saveSettings}
-          onClose={() => setSettingsOpen(false)}
-          onOpenFolder={openFolder}
+        <SettingsModal state={state} onPreview={setLook} onSave={saveSettings} onClose={closeSettings} onOpenFolder={openFolder} onCheckUpdate={checkUpdate} />
+      )}
+
+      {updateView && (
+        <UpdateModal
+          release={updateView.release}
+          mode={updateView.mode}
+          current={state.version}
+          progress={updateView.mode === 'update' ? updateProgress : null}
+          gamesRunning={state.instances.length > 0}
+          onInstall={installUpdate}
+          onRestart={() => api.restartApp().catch(fail)}
+          onOpenPage={() => openFolder('releases')}
+          onClose={() => setUpdateView(null)}
         />
       )}
     </div>

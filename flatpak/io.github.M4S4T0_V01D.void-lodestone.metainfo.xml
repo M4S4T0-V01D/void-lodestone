@@ -78,6 +78,11 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.3.0" date="2026-11-14">
+      <description>
+        <p>Self-updates from GitHub releases, What's new after an update, keyboard shortcuts, new appearance options with a live preview, foldable side panels and a much faster Settings dialog.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-29">
       <description>
         <p>Saved groups, a client per character, Build &amp; play for plugin developers, a debug switch, a tray icon, crash notices, desktop notifications, playtime and custom backgrounds.</p>

@@ -120,3 +120,35 @@ export function isErrorLine(line: string): boolean {
 export function isStackLine(line: string): boolean {
   return /^\s+(at |\.\.\. \d+ more)/.test(line);
 }
+
+/** A block of release notes: a heading, a paragraph or a bullet list. */
+export type NoteBlock = { kind: 'heading' | 'para'; text: string } | { kind: 'list'; items: string[] };
+
+/** GitHub release notes (Markdown) as plain blocks; inline marks like ** and ` are dropped, never rendered as HTML. */
+export function noteBlocks(md: string): NoteBlock[] {
+  const plain = (t: string) =>
+    t
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`]{1,3}([^*_`]+)[*_`]{1,3}/g, '$1')
+      .trim();
+  const out: NoteBlock[] = [];
+  for (const raw of md.replace(/\r/g, '').split('\n')) {
+    const line = raw.trim();
+    const last = out[out.length - 1];
+    if (!line) {
+      if (last?.kind === 'para') out.push({ kind: 'para', text: '' });
+      continue;
+    }
+    const head = /^#{1,6}\s+(.*)$/.exec(line);
+    const item = /^[-*+]\s+(.*)$/.exec(line);
+    if (head) out.push({ kind: 'heading', text: plain(head[1]!) });
+    else if (item) {
+      if (last?.kind === 'list') last.items.push(plain(item[1]!));
+      else out.push({ kind: 'list', items: [plain(item[1]!)] });
+    } else if (last?.kind === 'list' && /^\s{2,}/.test(raw)) last.items[last.items.length - 1] += ` ${plain(line)}`;
+    else if (last?.kind === 'para' && last.text) last.text += ` ${plain(line)}`;
+    else if (last?.kind === 'para') last.text = plain(line);
+    else out.push({ kind: 'para', text: plain(line) });
+  }
+  return out.filter((b) => b.kind !== 'para' || b.text);
+}

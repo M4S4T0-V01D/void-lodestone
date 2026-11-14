@@ -88,6 +88,23 @@ pub struct Settings {
     pub background_rotate: bool,
     /// Background blur in pixels.
     pub background_blur: u8,
+    /// Which part of the picture stays in view: "center", "top" or "bottom".
+    pub background_position: String,
+    /// Minutes between rotating screenshots.
+    pub rotate_minutes: u16,
+    /// A colour (#rrggbb) used instead of the theme's accent; empty for the theme's own.
+    pub accent: String,
+    /// Page zoom in percent.
+    pub ui_scale: u16,
+    /// "comfortable" or "compact".
+    pub density: String,
+    /// Corner roundness in pixels.
+    pub radius: u8,
+    /// The big logo and title above the clients.
+    pub show_hero: bool,
+    /// Side panels folded away from the top bar.
+    pub hide_accounts: bool,
+    pub hide_instances: bool,
     /// The first JDWP port for debug launches; more games at once take the next free ones.
     pub debug_port: u16,
     /// RuneLite plugin projects (Gradle), one folder per line, built by "Build & play".
@@ -98,6 +115,10 @@ pub struct Settings {
     pub notifications: bool,
     /// Closing the window hides it to the tray (when there is one) instead of quitting.
     pub close_to_tray: bool,
+    /// Look for new Lodestone releases on GitHub at start-up and every few hours.
+    pub check_updates: bool,
+    /// The version whose release notes were last shown, so "What's new" appears once after an update.
+    pub seen_version: String,
     pub groups: Vec<Group>,
     pub last_game: String,
     pub last_client: String,
@@ -124,11 +145,22 @@ impl Default for Settings {
             background_rs3: String::new(),
             background_rotate: false,
             background_blur: 0,
+            background_position: "center".into(),
+            rotate_minutes: 5,
+            accent: String::new(),
+            ui_scale: 100,
+            density: "comfortable".into(),
+            radius: 10,
+            show_hero: true,
+            hide_accounts: false,
+            hide_instances: false,
             debug_port: 5005,
             plugin_projects: String::new(),
             build_task: "jar".into(),
             notifications: true,
             close_to_tray: true,
+            check_updates: true,
+            seen_version: String::new(),
             groups: Vec::new(),
             last_game: "osrs".into(),
             last_client: "runelite".into(),
@@ -254,5 +286,7 @@ mod tests {
         let s = Store::load_from(&p);
         assert_eq!(s.settings.theme, "abyss");
         assert_eq!(s.settings.rs3_config_uri, RS3_CONFIG_URI);
+        assert_eq!((s.settings.ui_scale, s.settings.radius, s.settings.rotate_minutes), (100, 10, 5));
+        assert!(s.settings.show_hero && !s.settings.hide_accounts);
     }
 }

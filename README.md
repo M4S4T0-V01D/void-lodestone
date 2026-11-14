@@ -24,6 +24,8 @@
 - **Tray icon** listing what's running; optionally close to the tray while games run.
 - **Playtime** per character for today, this week and in total, kept only on your computer.
 - **Your own background** behind the middle area: a picture per game or your rotating RuneLite screenshots, with darken and blur.
+- **Updates itself** from GitHub releases (Flatpak): an Update button appears in the top bar, the bundle's checksum is checked before it is installed, and the release notes show once after the restart. Elsewhere it links to the release.
+- **Keyboard shortcuts:** Ctrl+Enter plays, Ctrl+, opens Settings.
 - **Tweakable:** Java options, client arguments, a custom Java, launch wrappers (`gamemoderun %command%`, `mangohud`), game home folder.
 - **VOID suite look:** seven themes, from Void to Daylight and High Contrast.
 - **No telemetry.** Nothing is collected or sent anywhere except to the services needed to sign in and download clients.
@@ -51,7 +53,7 @@ There is no official Old School client option: Jagex doesn't ship one for Linux,
 flatpak install flathub io.github.M4S4T0_V01D.void-lodestone
 ```
 
-Until the app is on Flathub, grab `void-lodestone.flatpak` from the [latest release](https://github.com/M4S4T0-V01D/void-lodestone/releases) and run `flatpak install --user void-lodestone.flatpak`.
+Until the app is on Flathub, grab `void-lodestone.flatpak` from the [latest release](https://github.com/M4S4T0-V01D/void-lodestone/releases) and run `flatpak install --user void-lodestone.flatpak`. From then on Lodestone offers new releases itself.
 
 ### From source
 
@@ -69,10 +71,10 @@ For development, `npx tauri dev` runs the app with hot reload.
 
 - You sign in on Jagex's site in a separate window. Lodestone never sees your password.
 - The long-lived OAuth tokens are discarded right after sign-in. Only the game session is kept, in the Secret Service keyring (or a `0600` file if no keyring is available).
-- Network traffic goes only to Jagex (sign-in, game sessions, the RS3 package), GitHub (RuneLite releases) and the HDOS CDN.
+- Network traffic goes only to Jagex (sign-in, game sessions, the RS3 package), GitHub (RuneLite and Lodestone releases) and the HDOS CDN.
 - Build & play runs Gradle in your plugin projects, which downloads whatever those projects depend on (usually from Maven Central and RuneLite's repository).
-- No analytics, crash reporting or update pings.
-- The Flatpak can read your Pictures folder (backgrounds) and read and write your Documents folder (custom jars and the plugin projects Gradle builds in).
+- No analytics or crash reporting. The update check is an anonymous request for GitHub's latest-release page, and can be turned off in Settings.
+- The Flatpak can read your Pictures folder (backgrounds) and read and write your Documents folder (custom jars and the plugin projects Gradle builds in). It may talk to the host's Flatpak service, which it uses only to install its own updates.
 
 ## Where things live
 
