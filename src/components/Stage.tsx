@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Bug, CheckCircle2, Download, Hammer, Play, Plus, RefreshCw, X } from 'lucide-react';
+import { Bookmark, Bug, CheckCircle2, Download, Hammer, NotebookPen, Play, Plus, RefreshCw, X } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { ago, bytes, characterName, CLIENTS, duration, makePick, playtimeSums, type Row } from '../format';
-import type { Account, ClientId, ClientStatus, Game, Group, Pick, Playtime, Progress } from '../types';
+import type { Account, CharacterInfo, ClientId, ClientStatus, Game, Group, Pick, Playtime, Progress } from '../types';
 
 interface Props {
   game: Game;
@@ -49,6 +49,9 @@ interface Props {
   backgroundPosition?: 'center' | 'top' | 'bottom';
   /** Hide the big logo and title. */
   hideHero?: boolean;
+  /** The chosen character's notes, tags and goals, and opening them. */
+  info?: CharacterInfo;
+  onNotes?: () => void;
 }
 
 /** The choices for an extra row's client: each client of the game, and its custom jar if one is set. */
@@ -359,6 +362,11 @@ export default function Stage(p: Props) {
                       </button>
                     </span>
                   ))}
+                {p.onNotes && p.pick && (
+                  <button className="btn ghost small" title="Notes, goals, tags, colour and RuneLite profile for this character" onClick={p.onNotes}>
+                    <NotebookPen size={13} /> Notes
+                  </button>
+                )}
                 <span className="spacer" />
                 {p.onBuild && (
                   <button
@@ -372,6 +380,7 @@ export default function Stage(p: Props) {
                 )}
               </div>
               {p.played && <Played {...p.played} />}
+              {p.info && <About info={p.info} />}
               {expired && (
                 <span className="dim">
                   {all.length > 1 ? "One of these accounts' sessions has" : "This account's session has"} expired. Use “Sign in again” in the accounts list.
@@ -387,6 +396,22 @@ export default function Stage(p: Props) {
 }
 
 /** Time played by the chosen character; counts up while it runs. */
+/** The chosen character's tags and the next goal not done yet. */
+function About({ info }: { info: CharacterInfo }) {
+  const next = info.goals.find((g) => !g.done);
+  if (!info.tags.length && !next) return null;
+  return (
+    <div className="char-about">
+      {info.tags.map((t) => (
+        <span key={t} className="tag" style={info.color ? { borderColor: info.color } : undefined}>
+          {t}
+        </span>
+      ))}
+      {next && <span className="dim">Next: {next.text}</span>}
+    </div>
+  );
+}
+
 function Played({ entry, live }: { entry?: Playtime; live: number[] }) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {

@@ -22,6 +22,13 @@
 - **Running games** with uptime, a live log viewer, Restart (same character, client and jar), Stop and Stop all.
 - **Crash notices** that open the log at the error, plus desktop notifications for crashes, expired sessions and failed update checks.
 - **Tray icon** listing what's running; optionally close to the tray while games run.
+- **Characters with their own RuneLite profile.** Each character can start RuneLite with a profile named after it (made from your active one), and one profile's settings can be copied over others.
+- **Notes, goals, tags and a colour** per character, shown in the list and under Play. The game window's title gets the character's name.
+- **Window layouts.** Lodestone remembers where each character's window was and puts it back, or tiles the running games across one monitor or all of them in one click. It only moves windows: it never sends keys or clicks to a game.
+- **News and server status:** Jagex's latest news for both games, whether sign-in is up, how many Old School worlds are online and how many people are playing.
+- **Backup and restore** of Lodestone's settings, groups, character notes and playtime, plus RuneLite's settings and profiles, in one file in your Documents folder. Sign-in sessions are never in a backup.
+- **Coming from Bolt?** Lodestone copies RuneLite's settings and profiles over from Bolt. See [Coming from Bolt](docs/coming-from-bolt.md).
+- **Roll back a client** if an update breaks something: the RS3 client, or the RuneLite and HDOS launchers, go back to the version before, and updates pause until you resume them.
 - **Playtime** per character for today, this week and in total, kept only on your computer.
 - **Your own background** behind the middle area: a picture per game or your rotating RuneLite screenshots, with darken and blur.
 - **Updates itself** from GitHub releases (Flatpak): an Update button appears in the top bar, the bundle's checksum is checked before it is installed, and the release notes show once after the restart. Elsewhere it links to the release.
@@ -72,6 +79,8 @@ For development, `npx tauri dev` runs the app with hot reload.
 - You sign in on Jagex's site in a separate window. Lodestone never sees your password.
 - The long-lived OAuth tokens are discarded right after sign-in. Only the game session is kept, in the Secret Service keyring (or a `0600` file if no keyring is available).
 - Network traffic goes only to Jagex (sign-in, game sessions, the RS3 package), GitHub (RuneLite and Lodestone releases) and the HDOS CDN.
+- The News window reads Jagex's news feeds and server lists (`secure.runescape.com`, `oldschool.runescape.com`, `www.runescape.com`, `account.jagex.com`) only while it is open.
+- Window layouts use X11 (or XWayland) to move and resize the game windows only. Nothing is sent to a game window.
 - Build & play runs Gradle in your plugin projects, which downloads whatever those projects depend on (usually from Maven Central and RuneLite's repository).
 - No analytics or crash reporting. The update check is an anonymous request for GitHub's latest-release page, and can be turned off in Settings.
 - The Flatpak can read your Pictures folder (backgrounds) and read and write your Documents folder (custom jars and the plugin projects Gradle builds in). It may talk to the host's Flatpak service, which it uses only to install its own updates.
@@ -85,6 +94,7 @@ For development, `npx tauri dev` runs the app with hot reload.
 | Downloaded clients | `…/void-lodestone/clients` | same, inside the app's data |
 | Game logs | `…/void-lodestone/logs` | same, inside the app's data |
 | Client settings (e.g. `.runelite`) | your home folder | `…/void-lodestone/home` |
+| Backups | `~/Documents/VOID Lodestone backups` | same |
 
 ## Development
 

@@ -1,6 +1,6 @@
 [package]
 name = "void-lodestone"
-version = "0.3.0"
+version = "0.4.0"
 description = "VOID Lodestone: a fast, open-source launcher for RuneLite, HDOS and RuneScape 3 with multiple Jagex accounts"
 authors = ["M4S4T0-V01D"]
 license = "GPL-3.0-or-later"
@@ -32,6 +32,12 @@ ar = "0.9"
 tar = "0.4"
 lzma-rs = "0.3"
 libc = "0.2"
+# Naming, placing and tiling the games' X11 windows; loads libX11 at run time.
+x11-dl = "2.21"
+# The game news feeds.
+quick-xml = "0.42"
+# Backups are .tar.gz.
+flate2 = "1"
 # Desktop notifications over D-Bus (already used by oo7 for the keyring).
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 

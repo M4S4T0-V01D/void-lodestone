@@ -3,6 +3,7 @@
 //! Inside the Flatpak those XDG folders are the app's own ~/.var/app folders.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -120,6 +121,12 @@ pub struct Settings {
     /// The version whose release notes were last shown, so "What's new" appears once after an update.
     pub seen_version: String,
     pub groups: Vec<Group>,
+    /// Start each character's RuneLite with its own settings profile, made from the active one the first time.
+    pub runelite_profiles: bool,
+    /// Put the character's name in the game window's title.
+    pub window_titles: bool,
+    /// Put each character's game window back where it was last time.
+    pub remember_windows: bool,
     pub last_game: String,
     pub last_client: String,
     pub last_character: String,
@@ -162,11 +169,45 @@ impl Default for Settings {
             check_updates: true,
             seen_version: String::new(),
             groups: Vec::new(),
+            runelite_profiles: false,
+            window_titles: true,
+            remember_windows: true,
             last_game: "osrs".into(),
             last_client: "runelite".into(),
             last_character: String::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Goal {
+    pub text: String,
+    pub done: bool,
+}
+
+/// What the user keeps about one character.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CharacterInfo {
+    pub notes: String,
+    pub goals: Vec<Goal>,
+    pub tags: Vec<String>,
+    /// #rrggbb, or empty for none.
+    pub color: String,
+    /// The RuneLite profile it plays with; empty: its own (when profiles per character are on) or RuneLite's active one.
+    pub profile: String,
+}
+
+/// Where a character's game window was: the client area's top-left corner on the X screen and its size.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WindowSpot {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -192,6 +233,9 @@ pub struct Account {
 pub struct Store {
     pub settings: Settings,
     pub accounts: Vec<Account>,
+    /// Keyed by pick (`account id:character id`).
+    pub characters: BTreeMap<String, CharacterInfo>,
+    pub windows: BTreeMap<String, WindowSpot>,
 }
 
 impl Store {

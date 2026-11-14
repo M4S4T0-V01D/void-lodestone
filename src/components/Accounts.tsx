@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Check, LogIn, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { ago, characterName, makePick } from '../format';
-import type { Account, Instance, Pick } from '../types';
+import type { Account, CharacterInfo, Instance, Pick } from '../types';
 
 interface Props {
   accounts: Account[];
   instances: Instance[];
+  /** Notes, tags and colours, by pick. */
+  characters?: Record<Pick, CharacterInfo>;
   pick: Pick;
   busy: boolean;
   onPick: (p: Pick) => void;
@@ -127,10 +129,16 @@ export default function Accounts(p: Props) {
               const id = makePick(a.id, c.accountId);
               const n = running(a.id, c.displayName);
               const name = characterName(c.displayName);
+              const info = p.characters?.[id];
               return (
                 <button key={id} className={`char ${p.pick === id ? 'selected' : ''}`} onClick={() => p.onPick(id)} aria-pressed={p.pick === id}>
-                  <span className="avatar">{name.charAt(0).toUpperCase()}</span>
-                  <span className="name">{name}</span>
+                  <span className="avatar" style={info?.color ? { background: info.color, color: '#111', borderColor: info.color } : undefined}>
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="name">
+                    {name}
+                    {!!info?.tags.length && <span className="char-tags">{info.tags.join(' · ')}</span>}
+                  </span>
                   {n > 0 && <span className="running">● playing</span>}
                 </button>
               );

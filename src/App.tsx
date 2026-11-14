@@ -1,20 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowUpCircle, CheckCircle2, Settings as Cog, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUpCircle,
+  CheckCircle2,
+  Settings as Cog,
+  Newspaper,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  X,
+} from 'lucide-react';
 import { api, errorText, events, type Folder } from './api';
 import logo from './assets/logo.svg';
 import { makeBackground, type Background } from './background';
 import Accounts from './components/Accounts';
 import BuildModal, { type Build } from './components/BuildModal';
+import CharacterModal, { EMPTY_INFO } from './components/CharacterModal';
 import Instances from './components/Instances';
 import LoginChoice from './components/LoginChoice';
 import LoginOverlay from './components/LoginOverlay';
 import LogViewer from './components/LogViewer';
+import NewsModal from './components/NewsModal';
 import SettingsModal from './components/SettingsModal';
 import Stage from './components/Stage';
 import UpdateModal from './components/UpdateModal';
 import { characterName, CLIENTS, loadRows, resolvePick, splitPick, validPick, type Row } from './format';
 import { applyTheme, findTheme, withAccent } from './themes';
-import type { AppState, ClientId, Game, Group, Instance, LoginMode, LoginStatus, Pick, Playtime, Progress, Release, Settings, UpdateProgress } from './types';
+import type {
+  AppState,
+  CharacterInfo,
+  ClientId,
+  Game,
+  Group,
+  Instance,
+  LoginMode,
+  LoginStatus,
+  Monitor,
+  Pick,
+  Profile,
+  Playtime,
+  Progress,
+  Release,
+  Settings,
+  UpdateProgress,
+} from './types';
 
 /** `crashed`: the game that crashed, for the Open log and Restart buttons. */
 type Notice = { kind: 'ok' | 'error' | 'warn'; text: string; crashed?: Instance };
@@ -65,6 +95,10 @@ export default function App() {
   const [choosing, setChoosing] = useState<{ id?: string } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newsOpen, setNewsOpen] = useState(false);
+  /** The character whose notes are open, and RuneLite's profiles to pick from. */
+  const [editing, setEditing] = useState<{ pick: Pick; profiles: Profile[] } | null>(null);
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
   /** Extra character rows under the main one, kept between runs. */
   const [extras, setExtras] = useState<Row[]>(() => {
     try {
@@ -270,6 +304,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [notice]);
 
+  // The monitors to tile over, read again whenever the first game starts.
+  const anyRunning = !!state?.instances.length;
+  useEffect(() => {
+    if (anyRunning)
+      api
+        .monitors()
+        .then(setMonitors)
+        .catch(() => setMonitors([]));
+  }, [anyRunning]);
+
   if (fatal)
     return (
       <div className="empty" style={{ paddingTop: 80 }}>
@@ -299,6 +343,47 @@ export default function App() {
     const acc = state.accounts.find((a) => a.id === parts?.[0]);
     return characterName(acc?.characters.find((c) => c.accountId === parts?.[1])?.displayName ?? '');
   };
+
+  const editCharacter = (k: Pick) => {
+    if (!k) return;
+    api
+      .runeliteProfiles()
+      .catch(() => [] as Profile[])
+      .then((profiles) => setEditing({ pick: k, profiles }));
+  };
+  const saveCharacter = (k: Pick, info: CharacterInfo) =>
+    api
+      .saveCharacter(k, info)
+      .then(() => {
+        const empty = !info.notes.trim() && !info.goals.length && !info.tags.length && !info.color && !info.profile;
+        setState((o) => {
+          if (!o) return o;
+          const characters = { ...o.characters };
+          if (empty) delete characters[k];
+          else characters[k] = info;
+          return { ...o, characters };
+        });
+        setEditing(null);
+      })
+      .catch(fail);
+  const tile = (monitor: number | null) =>
+    api
+      .tileWindows(monitor)
+      .then((n) =>
+        setNotice(n ? { kind: 'ok', text: `Tiled ${n} game window${n === 1 ? '' : 's'}.` } : { kind: 'warn', text: 'No game windows were found to tile.' }),
+      )
+      .catch(fail);
+  const restoreWindows = () =>
+    api
+      .restoreWindows()
+      .then((n) =>
+        setNotice(
+          n
+            ? { kind: 'ok', text: `Put ${n} window${n === 1 ? '' : 's'} back.` }
+            : { kind: 'warn', text: 'No running character has a remembered window spot yet.' },
+        ),
+      )
+      .catch(fail);
 
   const persist = (settings: Settings) => {
     setState((old) => old && { ...old, settings });
@@ -541,6 +626,9 @@ export default function App() {
             <ArrowUpCircle size={14} /> {updateProgress?.phase === 'done' ? 'Restart to update' : `Update ${update.version}`}
           </button>
         )}
+        <button className="icon-btn" title="News and server status" onClick={() => setNewsOpen(true)}>
+          <Newspaper size={16} />
+        </button>
         <button className="icon-btn" title="Settings (Ctrl+,)" onClick={() => setSettingsOpen(true)}>
           <Cog size={16} />
         </button>
@@ -551,6 +639,7 @@ export default function App() {
           <Accounts
             accounts={state.accounts}
             instances={state.instances}
+            characters={state.characters}
             pick={current}
             busy={busy || signingIn}
             onPick={setPick}
@@ -607,6 +696,8 @@ export default function App() {
           backgroundBlur={background?.cssBlur}
           backgroundPosition={shown.backgroundPosition}
           hideHero={!shown.showHero}
+          info={current ? state.characters[current] : undefined}
+          onNotes={() => editCharacter(current)}
         />
         {!state.settings.hideInstances && (
           <Instances
@@ -617,6 +708,9 @@ export default function App() {
             restarting={restarting}
             onLogs={() => openFolder('logs')}
             onLog={(inst) => setLogOf({ inst, atError: false })}
+            onTile={tile}
+            onRestoreWindows={restoreWindows}
+            monitors={monitors}
           />
         )}
       </div>
@@ -670,7 +764,52 @@ export default function App() {
       {build && <BuildModal build={build} onCancel={() => api.cancelBuild().catch(fail)} onClose={() => setBuild(null)} />}
 
       {settingsOpen && (
-        <SettingsModal state={state} onPreview={setLook} onSave={saveSettings} onClose={closeSettings} onOpenFolder={openFolder} onCheckUpdate={checkUpdate} />
+        <SettingsModal
+          state={state}
+          onPreview={setLook}
+          onSave={saveSettings}
+          onClose={closeSettings}
+          onOpenFolder={openFolder}
+          onCheckUpdate={checkUpdate}
+          notify={(kind, text) => setNotice({ kind, text })}
+          onClients={(clients) => setState((o) => o && { ...o, clients })}
+          onRestored={(s) => {
+            setState(s);
+            setLook(null);
+            setSettingsOpen(false);
+            api
+              .playtime()
+              .then(setPlaytime)
+              .catch(() => {});
+          }}
+        />
+      )}
+
+      {newsOpen && <NewsModal game={game} onClose={() => setNewsOpen(false)} />}
+
+      {editing && (
+        <CharacterModal
+          name={nameOf(editing.pick)}
+          info={state.characters[editing.pick] ?? EMPTY_INFO}
+          profiles={editing.profiles}
+          ownProfiles={state.settings.runeliteProfiles}
+          window={state.windows[editing.pick]}
+          onSave={(info) => saveCharacter(editing.pick, info)}
+          onForgetWindow={() =>
+            api
+              .forgetWindow(editing.pick)
+              .then(() =>
+                setState((o) => {
+                  if (!o) return o;
+                  const windows = { ...o.windows };
+                  delete windows[editing.pick];
+                  return { ...o, windows };
+                }),
+              )
+              .catch(fail)
+          }
+          onClose={() => setEditing(null)}
+        />
       )}
 
       {updateView && (

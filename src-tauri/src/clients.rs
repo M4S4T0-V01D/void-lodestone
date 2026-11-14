@@ -3,11 +3,14 @@
 //! - HDOS: the launcher jar from HDOS's CDN, re-downloaded only when the server says it changed.
 //! - RuneScape 3: Jagex's Linux package, verified against the SHA-256 in their package index, then the game binary is
 //!   unpacked from it. Nothing is installed system-wide.
+//!
+//! Each update is downloaded beside the client and checked before it replaces it; the version it replaces is kept
+//! (`<file>.previous`) so a broken update can be rolled back. A rolled-back client stays pinned until updates resume.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::{data_dir, now};
 
@@ -62,6 +65,35 @@ impl Client {
     fn meta_path(self) -> PathBuf {
         self.dir().join("meta.json")
     }
+
+    /// Where a download waits until it's checked.
+    fn staged(self) -> PathBuf {
+        with_suffix(&self.file(), ".new")
+    }
+
+    fn slot(self) -> Slot {
+        Slot::new(self.dir(), self.file())
+    }
+}
+
+/// A client's file, the version kept to roll back to, and what's known about each.
+struct Slot {
+    file: PathBuf,
+    meta: PathBuf,
+    previous: PathBuf,
+    previous_meta: PathBuf,
+}
+
+impl Slot {
+    fn new(dir: PathBuf, file: PathBuf) -> Self {
+        Slot { previous: with_suffix(&file, ".previous"), meta: dir.join("meta.json"), previous_meta: dir.join("meta.previous.json"), file }
+    }
+}
+
+fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
+    let mut s = p.as_os_str().to_owned();
+    s.push(suffix);
+    PathBuf::from(s)
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -77,6 +109,8 @@ struct Meta {
     last_error: String,
     /// The version this one replaced.
     previous_version: String,
+    /// Rolled back: kept at this version, with no update checks, until updates resume.
+    pinned: bool,
 }
 
 impl Meta {
@@ -91,13 +125,66 @@ impl Meta {
     }
 }
 
+fn read_meta(p: &Path) -> Option<Meta> {
+    std::fs::read(p).ok().and_then(|b| serde_json::from_slice(&b).ok())
+}
+
 fn load_meta(c: Client) -> Meta {
-    std::fs::read(c.meta_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    read_meta(&c.meta_path()).unwrap_or_default()
+}
+
+fn write_meta(p: &Path, m: &Meta) {
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(p, serde_json::to_vec_pretty(m).unwrap());
 }
 
 fn save_meta(c: Client, m: &Meta) {
-    let _ = std::fs::create_dir_all(c.dir());
-    let _ = std::fs::write(c.meta_path(), serde_json::to_vec_pretty(m).unwrap());
+    write_meta(&c.meta_path(), m);
+}
+
+/// Put a checked download in place. A different version than the installed one moves that aside as the one to roll
+/// back to; the same version again (a repaired download) just replaces it.
+fn put_in_place(c: Client, staged: &Path, new: Meta, old: Meta) -> Result<(), String> {
+    put_in_slot(&c.slot(), staged, new, old)
+}
+
+fn put_in_slot(s: &Slot, staged: &Path, new: Meta, old: Meta) -> Result<(), String> {
+    if !old.version.is_empty() && old.version != new.version && s.file.exists() {
+        std::fs::rename(&s.file, &s.previous).map_err(|e| format!("couldn't keep the old version: {e}"))?;
+        write_meta(&s.previous_meta, &Meta { pinned: false, ..old.clone() });
+    }
+    std::fs::rename(staged, &s.file).map_err(|e| format!("couldn't install the update: {e}"))?;
+    write_meta(&s.meta, &new.after(old));
+    Ok(())
+}
+
+/// Go back to the version the last update replaced, and stay there. Swaps the two, so rolling back again undoes it.
+pub fn roll_back(c: Client) -> Result<Status, String> {
+    roll_back_slot(&c.slot())?;
+    Ok(status(c))
+}
+
+fn roll_back_slot(s: &Slot) -> Result<(), String> {
+    let prev_meta = read_meta(&s.previous_meta).filter(|_| s.previous.is_file()).ok_or("There is no earlier version kept.")?;
+    let cur_meta = read_meta(&s.meta).unwrap_or_default();
+    let swap = with_suffix(&s.file, ".swap");
+    std::fs::rename(&s.file, &swap)
+        .and_then(|_| std::fs::rename(&s.previous, &s.file))
+        .and_then(|_| std::fs::rename(&swap, &s.previous))
+        .map_err(|e| format!("couldn't swap the versions: {e}"))?;
+    write_meta(&s.previous_meta, &Meta { pinned: false, ..cur_meta.clone() });
+    let previous_version = cur_meta.version;
+    let blank = (String::new(), String::new(), String::new());
+    write_meta(&s.meta, &Meta { pinned: true, etag: blank.0, last_modified: blank.1, last_error: blank.2, previous_version, ..prev_meta });
+    Ok(())
+}
+
+/// Unpin a rolled-back client; the next check (made now by the caller) updates it.
+pub fn resume(c: Client) {
+    let m = load_meta(c);
+    save_meta(c, &Meta { pinned: false, checked_at: 0, ..m });
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,12 +197,17 @@ pub struct Status {
     pub installed_at: u64,
     pub size: u64,
     pub last_error: String,
+    /// The version to roll back to when `can_roll_back`, else the one the installed copy replaced.
     pub previous_version: String,
+    pub pinned: bool,
+    pub can_roll_back: bool,
 }
 
 pub fn status(c: Client) -> Status {
     let m = load_meta(c);
     let size = std::fs::metadata(c.file()).map(|m| m.len()).unwrap_or(0);
+    let slot = c.slot();
+    let prev = read_meta(&slot.previous_meta).filter(|_| slot.previous.is_file());
     Status {
         client: c,
         installed: size > 0,
@@ -124,7 +216,9 @@ pub fn status(c: Client) -> Status {
         installed_at: m.installed_at,
         size,
         last_error: m.last_error,
-        previous_version: m.previous_version,
+        can_roll_back: size > 0 && prev.is_some(),
+        previous_version: prev.map_or(m.previous_version, |p| p.version),
+        pinned: m.pinned,
     }
 }
 
@@ -154,7 +248,7 @@ pub async fn ensure(
     emit: &(dyn Fn(Progress) + Send + Sync),
 ) -> Result<Status, String> {
     let st = status(c);
-    if st.installed && !force && now().saturating_sub(st.checked_at) < FRESH_SECS {
+    if st.installed && (st.pinned || !force && now().saturating_sub(st.checked_at) < FRESH_SECS) {
         return Ok(st);
     }
     emit(Progress::new(c, "checking"));
@@ -268,15 +362,14 @@ async fn update_runelite(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send
     }
     let asset = rel.assets.iter().find(|a| a.name == "RuneLite.jar").ok_or("the release has no RuneLite.jar")?;
     let res = http.get(&asset.browser_download_url).send().await.map_err(|e| e.to_string())?;
-    let dest = c.file();
-    let (sha, _) = save(c, res, &dest, emit).await?;
+    let staged = c.staged();
+    let (sha, _) = save(c, res, &staged, emit).await?;
     if let Some(want) = asset.digest.as_deref().and_then(|d| d.strip_prefix("sha256:")) {
         if !want.eq_ignore_ascii_case(&sha) {
-            return Err(mismatch(&dest));
+            return Err(mismatch(&staged));
         }
     }
-    save_meta(c, &Meta::fresh(rel.tag_name, sha).after(meta));
-    Ok(())
+    put_in_place(c, &staged, Meta::fresh(rel.tag_name, sha), meta)
 }
 
 async fn update_hdos(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + Sync)) -> Result<(), String> {
@@ -298,10 +391,10 @@ async fn update_hdos(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + S
     }
     let header = |k: &str| res.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     let (etag, last_modified) = (header("etag"), header("last-modified"));
-    let (sha, _) = save(c, res, &c.file(), emit).await?;
+    let staged = c.staged();
+    let (sha, _) = save(c, res, &staged, emit).await?;
     let version = if last_modified.is_empty() { format!("sha256 {}", &sha[..12]) } else { last_modified.clone() };
-    save_meta(c, &Meta { etag, last_modified, ..Meta::fresh(version, sha).after(meta) });
-    Ok(())
+    put_in_place(c, &staged, Meta { etag, last_modified, ..Meta::fresh(version, sha) }, meta)
 }
 
 #[derive(Debug, PartialEq)]
@@ -387,7 +480,7 @@ async fn update_rs3(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + Sy
         return Err(mismatch(&deb));
     }
     emit(Progress::new(c, "unpacking"));
-    let dest = c.file();
+    let dest = c.staged();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let bytes = std::fs::read(&deb).map_err(|e| e.to_string())?;
         let bin = extract_rs3(&bytes)?;
@@ -409,13 +502,43 @@ async fn update_rs3(http: &reqwest::Client, emit: &(dyn Fn(Progress) + Send + Sy
     })
     .await
     .map_err(|e| e.to_string())??;
-    save_meta(c, &Meta::fresh(pkg.version, sha).after(meta));
-    Ok(())
+    put_in_place(c, &c.staged(), Meta::fresh(pkg.version, sha), meta)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_the_old_version_to_roll_back_to() {
+        let d = std::env::temp_dir().join(format!("lodestone-clients-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let s = Slot::new(d.clone(), d.join("RuneLite.jar"));
+        let staged = d.join("RuneLite.jar.new");
+        let install = |body: &str, version: &str| {
+            std::fs::write(&staged, body).unwrap();
+            let old = read_meta(&s.meta).unwrap_or_default();
+            put_in_slot(&s, &staged, Meta::fresh(version.into(), body.into()), old).unwrap();
+        };
+        install("one", "2.7.0");
+        assert!(!s.previous.exists());
+        assert!(roll_back_slot(&s).is_err());
+        install("one again", "2.7.0");
+        assert!(!s.previous.exists());
+        install("two", "2.7.1");
+        assert_eq!(std::fs::read_to_string(&s.previous).unwrap(), "one again");
+
+        roll_back_slot(&s).unwrap();
+        let m = read_meta(&s.meta).unwrap();
+        assert_eq!((m.version.as_str(), m.pinned, m.previous_version.as_str()), ("2.7.0", true, "2.7.1"));
+        assert_eq!(std::fs::read_to_string(&s.file).unwrap(), "one again");
+        assert_eq!(read_meta(&s.previous_meta).unwrap().version, "2.7.1");
+
+        roll_back_slot(&s).unwrap();
+        assert_eq!(std::fs::read_to_string(&s.file).unwrap(), "two");
+        assert_eq!(read_meta(&s.meta).unwrap().version, "2.7.1");
+    }
 
     #[test]
     fn parses_the_package_index() {

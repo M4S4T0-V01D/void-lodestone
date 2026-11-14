@@ -1490,3 +1490,185 @@ body:has(.overlay) .app *::after {
   line-height: 14px;
   text-align: center;
 }
+
+/* Characters: notes, goals, tags and colours */
+.char .char-tags {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.character-modal {
+  width: min(520px, 92vw);
+}
+.colors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.none {
+  background: repeating-linear-gradient(45deg, transparent 0 4px, rgba(127, 127, 127, 0.35) 4px 5px);
+}
+.swatch.selected {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.colors input[type='color'] {
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.goal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goal .check {
+  flex: 1;
+}
+.goal-add {
+  display: flex;
+  gap: 8px;
+}
+.goal-add .input {
+  flex: 1;
+}
+.done {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.char-about {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  font-size: 11px;
+}
+
+/* Game window tools in the running games panel */
+.window-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.select.small {
+  height: 26px;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+/* News and status */
+.news-modal {
+  width: min(680px, 92vw);
+}
+.server-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.news-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.news-item:last-child {
+  border-bottom: none;
+}
+.news-item h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.news-item p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.news-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+/* Settings: sharing profiles, rolling back, backups */
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.share-to {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.share-to .badge {
+  margin-left: 6px;
+}
+.rollback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.rollback .hint {
+  flex-basis: 100%;
+}
+.backups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.backups li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.backups .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.restore-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - 2026-11-14
+
+- A RuneLite profile per character: turn it on in Settings › Characters and each character starts RuneLite with a profile named after it, made from your active profile the first time. A character can also use any profile you pick.
+- Copy one RuneLite profile's settings over others (the old files are kept as `.bak`).
+- Notes, goals, tags and a colour per character, from the new Notes button under Play. Tags and the colour show in the accounts list; the tags and the next goal show under Play.
+- Game windows are titled with the character's name.
+- Window layouts: Lodestone remembers where each character's window was and puts it back next time, and Tile lays the running games out over one monitor or all of them. It only moves windows; it never sends keys or clicks.
+- News and status: Jagex's latest news for Old School and RuneScape 3, whether sign-in is up, Old School worlds online and player counts.
+- Backup and restore in Settings › Backup: Lodestone's settings, groups, notes and playtime plus RuneLite's settings and profiles, in one file in Documents. Sign-in sessions are never backed up.
+- Coming from Bolt: copy RuneLite's settings and profiles over from Bolt. See docs/coming-from-bolt.md.
+- Roll a client back to the version before if an update breaks something; updates pause until you resume them.
+
 ## 0.3.0 - 2026-11-14
 
 - Lodestone updates itself: it looks for new releases on GitHub at start-up and every six hours (turn it off in Settings), shows an Update button in the top bar, and installs the new Flatpak after checking its checksum. Restart when your games are done.

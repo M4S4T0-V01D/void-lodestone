@@ -3,7 +3,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import type {
   AppState,
+  Backup,
   BuildLine,
+  CharacterInfo,
   ClientId,
   ClientStatus,
   Instance,
@@ -11,9 +13,14 @@ import type {
   LoginMode,
   LoginStatus,
   LogSource,
+  Monitor,
+  NewsItem,
+  Pick,
   Playtime,
+  Profile,
   Progress,
   Release,
+  ServerStatus,
   Settings,
   UpdateProgress,
 } from './types';
@@ -55,12 +62,36 @@ export const api = {
   installUpdate: () => invoke<void>('install_update'),
   /** Quit and start the installed update; refused while games run. */
   restartApp: () => invoke<void>('restart_app'),
+  /** An empty info forgets the character's notes. */
+  saveCharacter: (pick: Pick, info: CharacterInfo) => invoke<void>('save_character', { pick, info }),
+  forgetWindow: (pick: Pick) => invoke<void>('forget_window', { pick }),
+  runeliteProfiles: () => invoke<Profile[]>('runelite_profiles'),
+  /** Copy one profile's settings over others; returns how many were written. */
+  shareProfile: (from: string, to: string[]) => invoke<number>('share_profile', { from, to }),
+  /** Tile the game windows over every monitor, or the one given; returns how many moved. */
+  tileWindows: (monitor: number | null) => invoke<number>('tile_windows', { monitor }),
+  restoreWindows: () => invoke<number>('restore_windows'),
+  monitors: () => invoke<Monitor[]>('monitors'),
+  news: (game: string) => invoke<NewsItem[]>('news', { game }),
+  serverStatus: () => invoke<ServerStatus>('server_status'),
+  openNews: (url: string) => invoke<void>('open_news', { url }),
+  backups: () => invoke<Backup[]>('backups'),
+  /** Returns the new backup's name. */
+  makeBackup: () => invoke<string>('make_backup'),
+  restoreBackup: (name: string, lodestone: boolean, runelite: boolean) =>
+    invoke<AppState>('restore_backup', { name, lodestone, runelite }),
+  /** Folders where Bolt's data may be. */
+  boltFolders: () => invoke<string[]>('bolt_folders'),
+  /** Copy RuneLite's settings and profiles from a Bolt folder; returns how many files. */
+  importBolt: (folder: string) => invoke<number>('import_bolt', { folder }),
+  rollbackClient: (client: ClientId) => invoke<ClientStatus[]>('rollback_client', { client }),
+  resumeUpdates: (client: ClientId) => invoke<ClientStatus[]>('resume_updates', { client }),
   /** Page zoom, 1 for 100%. */
   setZoom: (factor: number) => getCurrentWebview().setZoom(factor),
 };
 
 /** Folders the backend can open, plus the project page. */
-export type Folder = 'logs' | 'data' | 'clients' | 'plugins' | 'screenshots' | 'website' | 'releases';
+export type Folder = 'logs' | 'data' | 'clients' | 'plugins' | 'screenshots' | 'website' | 'releases' | 'backups';
 
 export const events = {
   progress: (f: (p: Progress) => void): Promise<UnlistenFn> => listen<Progress>('client-progress', (e) => f(e.payload)),

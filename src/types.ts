@@ -74,6 +74,12 @@ export interface Settings {
   /** The version whose notes were last shown. */
   seenVersion: string;
   groups: Group[];
+  /** Start each character's RuneLite with its own settings profile. */
+  runeliteProfiles: boolean;
+  /** Put the character's name in the game window's title. */
+  windowTitles: boolean;
+  /** Put each character's game window back where it was last time. */
+  rememberWindows: boolean;
   lastGame: string;
   lastClient: string;
   lastCharacter: string;
@@ -112,6 +118,10 @@ export interface ClientStatus {
   lastError?: string;
   /** The version replaced by the last update, if any. */
   previousVersion?: string;
+  /** Rolled back: updates wait until resumed. */
+  pinned?: boolean;
+  /** An older version is kept to go back to. */
+  canRollBack?: boolean;
 }
 
 export interface Progress {
@@ -188,6 +198,74 @@ export interface AppState {
   tray: boolean;
   /** A newer Lodestone release, once one has been found. */
   update: Release | null;
+  /** Notes and the rest, by pick. */
+  characters: Record<Pick, CharacterInfo>;
+  /** Remembered game windows, by pick. */
+  windows: Record<Pick, WindowSpot>;
+}
+
+export interface Goal {
+  text: string;
+  done: boolean;
+}
+
+export interface CharacterInfo {
+  notes: string;
+  goals: Goal[];
+  tags: string[];
+  /** #rrggbb, or empty for none. */
+  color: string;
+  /** The RuneLite profile it plays with; empty for its own or RuneLite's active one. */
+  profile: string;
+}
+
+export interface WindowSpot {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
+export interface Monitor {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
+/** A RuneLite settings profile. */
+export interface Profile {
+  id: number;
+  name: string;
+  /** Kept in the RuneLite account's cloud storage. */
+  sync: boolean;
+  active: boolean;
+}
+
+export interface NewsItem {
+  title: string;
+  link: string;
+  summary: string;
+  date: string;
+  category: string;
+}
+
+export interface ServerStatus {
+  osrsWorlds: number | null;
+  osrsOnline: number | null;
+  osrsPlayers: number | null;
+  allPlayers: number | null;
+  signIn: boolean;
+  checkedAt: number;
+}
+
+export interface Backup {
+  name: string;
+  size: number;
+  /** Unix seconds. */
+  created: number;
 }
 
 /** A Lodestone release on GitHub. */

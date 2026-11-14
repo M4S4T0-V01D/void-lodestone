@@ -2,17 +2,21 @@
 //! No telemetry: the only hosts contacted are Jagex's (sign-in, sessions, RS3 download), GitHub (RuneLite) and
 //! HDOS's CDN, plus GitHub for Lodestone's own releases (which can be turned off).
 
+mod backup;
 mod clients;
 mod config;
 mod gradle;
 mod jagex;
 mod launch;
 mod login;
+mod news;
 mod notify;
 mod playtime;
+mod profiles;
 mod secrets;
 mod tray;
 mod update;
+mod windows;
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -51,6 +55,8 @@ pub struct App {
     release: Mutex<Option<update::Release>>,
     /// An update is being downloaded or installed.
     updating: AtomicBool,
+    /// Commands for the thread that names, places and tiles the game windows.
+    windows: Mutex<std::sync::mpsc::Sender<windows::Cmd>>,
 }
 
 impl App {
@@ -161,6 +167,10 @@ struct StateView {
     tray: bool,
     /// A newer release, once one has been found.
     update: Option<update::Release>,
+    /// Notes, goals, tags, colour and profile per pick.
+    characters: std::collections::BTreeMap<String, config::CharacterInfo>,
+    /// Where each pick's game window was last seen.
+    windows: std::collections::BTreeMap<String, config::WindowSpot>,
 }
 
 async fn view(st: &App) -> StateView {
@@ -196,12 +206,52 @@ async fn view(st: &App) -> StateView {
         plugin_packages,
         tray: st.tray.load(Ordering::Relaxed),
         update: st.release.lock().unwrap().clone().filter(|r| r.newer),
+        characters: store.characters,
+        windows: store.windows,
     }
 }
 
 #[tauri::command]
 async fn get_state(st: State<'_, App>) -> Result<StateView, String> {
     Ok(view(&st).await)
+}
+
+/// Save a character's notes, goals, tags, colour and profile; an empty one is removed.
+#[tauri::command]
+fn save_character(st: State<'_, App>, pick: String, info: config::CharacterInfo) -> Result<(), String> {
+    let mut store = st.store.lock().unwrap();
+    let info = config::CharacterInfo {
+        tags: info.tags.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect(),
+        goals: info.goals.into_iter().filter(|g| !g.text.trim().is_empty()).collect(),
+        profile: info.profile.trim().to_string(),
+        ..info
+    };
+    if !info.profile.is_empty() && !profiles::valid_name(&info.profile) {
+        return Err(format!("\"{}\" can't be used as a RuneLite profile name.", info.profile));
+    }
+    if info == config::CharacterInfo::default() {
+        store.characters.remove(&pick);
+    } else {
+        store.characters.insert(pick, info);
+    }
+    st.save(&store)
+}
+
+#[tauri::command]
+fn runelite_profiles(st: State<'_, App>) -> Result<Vec<profiles::Profile>, String> {
+    let settings = st.store.lock().unwrap().settings.clone();
+    profiles::list(&profiles::dir(&settings))
+}
+
+/// Copy one RuneLite profile's settings over others. A running RuneLite would save its own over them, so not then.
+#[tauri::command]
+async fn share_profile(st: State<'_, App>, from: String, to: Vec<String>) -> Result<usize, String> {
+    if st.instances.lock().unwrap().iter().any(|i| i.client == Client::Runelite) {
+        return Err("Close RuneLite first: a running RuneLite saves its own settings over the copies.".into());
+    }
+    let settings = st.store.lock().unwrap().settings.clone();
+    let dir = profiles::dir(&settings);
+    tauri::async_runtime::spawn_blocking(move || profiles::share(&dir, &from, &to)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -427,6 +477,202 @@ async fn update_clients(
     Ok(Client::ALL.iter().map(|c| clients::status(*c)).collect())
 }
 
+/// Go back to the client version the last update replaced, and keep it until updates resume.
+#[tauri::command]
+async fn rollback_client(st: State<'_, App>, client: Client) -> Result<Vec<clients::Status>, String> {
+    if st.instances.lock().unwrap().iter().any(|i| i.client == client) {
+        return Err(format!("Close {} first.", client.name()));
+    }
+    let _guard = st.downloads.lock().await;
+    clients::roll_back(client)?;
+    Ok(Client::ALL.iter().map(|c| clients::status(*c)).collect())
+}
+
+/// Let a rolled-back client update again, and update it now.
+#[tauri::command]
+async fn resume_updates(app: AppHandle, st: State<'_, App>, client: Client) -> Result<Vec<clients::Status>, String> {
+    let _guard = st.downloads.lock().await;
+    clients::resume(client);
+    clients::ensure(&st.http, client, true, &progress_emitter(&app)).await?;
+    Ok(Client::ALL.iter().map(|c| clients::status(*c)).collect())
+}
+
+/// Feed the window thread the running games and save the window spots it reports.
+fn window_thread(app: AppHandle, rx: std::sync::mpsc::Receiver<windows::Cmd>) {
+    let job = || {
+        let st = app.state::<App>();
+        let running = st.instances.lock().unwrap().clone();
+        let store = st.store.lock().unwrap();
+        let targets = running
+            .iter()
+            .map(|i| windows::Target {
+                pid: i.pid,
+                pick: format!("{}:{}", i.account_id, i.character_id),
+                name: store
+                    .character(&i.account_id, &i.character_id)
+                    .map(|(_, c)| c.display_name.trim().to_string())
+                    .unwrap_or_default(),
+                client: if i.client == Client::Rs3 { "RuneScape" } else { i.client.name() },
+            })
+            .collect();
+        windows::Job {
+            targets,
+            titles: store.settings.window_titles,
+            remember: store.settings.remember_windows,
+            saved: store.windows.clone(),
+        }
+    };
+    let record = |changes: Vec<(String, config::WindowSpot)>| {
+        let st = app.state::<App>();
+        let mut store = st.store.lock().unwrap();
+        store.windows.extend(changes);
+        let _ = st.save(&store);
+    };
+    windows::run(rx, job, record);
+}
+
+/// Ask the window thread something and wait for its answer off the async runtime.
+async fn ask_windows<T: Send + 'static>(
+    st: &App,
+    cmd: impl FnOnce(std::sync::mpsc::Sender<Result<T, String>>) -> windows::Cmd,
+) -> Result<T, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    st.windows.lock().unwrap().send(cmd(tx)).map_err(|_| "The window helper has stopped.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(10)))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|_| "The window helper didn't answer.".to_string())?
+}
+
+/// Tile the game windows over every monitor, or over one (an index from `monitors`). Returns how many moved.
+#[tauri::command]
+async fn tile_windows(st: State<'_, App>, monitor: Option<usize>) -> Result<usize, String> {
+    ask_windows(&st, |tx| windows::Cmd::Tile(monitor, tx)).await
+}
+
+/// Put the game windows back where they were saved.
+#[tauri::command]
+async fn restore_windows(st: State<'_, App>) -> Result<usize, String> {
+    ask_windows(&st, windows::Cmd::Restore).await
+}
+
+#[tauri::command]
+async fn monitors(st: State<'_, App>) -> Result<Vec<windows::Monitor>, String> {
+    ask_windows(&st, windows::Cmd::Monitors).await
+}
+
+/// The latest news for "osrs" or "rs3".
+#[tauri::command]
+async fn news(st: State<'_, App>, game: String) -> Result<Vec<news::Item>, String> {
+    news::feed(&st.http, &game).await
+}
+
+#[tauri::command]
+async fn server_status(st: State<'_, App>) -> Result<news::Status, String> {
+    Ok(news::status(&st.http).await)
+}
+
+/// Open a news link in the browser; only Jagex's own pages.
+#[tauri::command]
+fn open_news(url: String) -> Result<(), String> {
+    if !news::may_open(&url) {
+        return Err("That link doesn't go to a Jagex news page.".into());
+    }
+    std::process::Command::new("xdg-open")
+        .arg(&url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("couldn't open the link: {e}"))
+}
+
+fn runelite_running(st: &App) -> bool {
+    st.instances.lock().unwrap().iter().any(|i| i.client == Client::Runelite)
+}
+
+#[tauri::command]
+fn backups() -> Vec<backup::Backup> {
+    backup::list()
+}
+
+/// Back up settings, groups, character notes, play time and RuneLite's profiles. Returns the new file's name.
+#[tauri::command]
+async fn make_backup(st: State<'_, App>) -> Result<String, String> {
+    let store = st.store.lock().unwrap().clone();
+    let rl = launch::runelite_dir(&store.settings);
+    tauri::async_runtime::spawn_blocking(move || backup::create(&store, &rl)).await.map_err(|e| e.to_string())?
+}
+
+/// Put a backup back: Lodestone's part (settings, groups, notes, window spots, play time), RuneLite's profiles, or both.
+#[tauri::command]
+async fn restore_backup(app: AppHandle, st: State<'_, App>, name: String, lodestone: bool, runelite: bool) -> Result<StateView, String> {
+    if runelite && runelite_running(&st) {
+        return Err("Close RuneLite first: a running RuneLite saves its own settings over the restored ones.".into());
+    }
+    let path = backup::path_of(&name)?;
+    let c = tauri::async_runtime::spawn_blocking(move || backup::read(&path)).await.map_err(|e| e.to_string())??;
+    if lodestone {
+        if let Some(from) = c.store.clone() {
+            let mut store = st.store.lock().unwrap();
+            let ids = backup::merge(&mut store, from);
+            st.save(&store)?;
+            if let Some(book) = &c.playtime {
+                let book: playtime::Book = book.iter().map(|(k, v)| (backup::remap(&ids, k), v.clone())).collect();
+                let p = playtime::path();
+                let tmp = p.with_extension("json.tmp");
+                std::fs::write(&tmp, serde_json::to_vec(&book).unwrap())
+                    .and_then(|_| std::fs::rename(&tmp, &p))
+                    .map_err(|e| format!("couldn't restore play time: {e}"))?;
+            }
+        }
+        st.has_session.lock().unwrap().clear();
+    }
+    if runelite {
+        let rl = launch::runelite_dir(&st.store.lock().unwrap().settings);
+        tauri::async_runtime::spawn_blocking(move || backup::put_runelite(&rl, &c)).await.map_err(|e| e.to_string())??;
+    }
+    tray::refresh(&app);
+    Ok(view(&st).await)
+}
+
+/// Bolt's RuneLite folders found on this computer.
+#[tauri::command]
+fn bolt_folders() -> Vec<String> {
+    backup::bolt_folders().iter().map(|p| p.display().to_string()).collect()
+}
+
+/// Copy RuneLite's profiles from Bolt (or any .runelite folder) into the one Lodestone's RuneLite uses. Only reads
+/// profiles2 and settings.properties; never Bolt's saved sign-in. Returns how many profiles came over.
+#[tauri::command]
+async fn import_bolt(st: State<'_, App>, folder: String) -> Result<usize, String> {
+    if runelite_running(&st) {
+        return Err("Close RuneLite first: a running RuneLite saves its own settings over the copied ones.".into());
+    }
+    let from = std::path::PathBuf::from(launch::expand_home(folder.trim()));
+    let Some(from) = backup::find_runelite(&from) else {
+        return Err("No RuneLite profiles there. Point at Bolt's bolt-launcher folder or the .runelite folder in it.".into());
+    };
+    let to = launch::runelite_dir(&st.store.lock().unwrap().settings);
+    if from.canonicalize().ok() == to.canonicalize().ok() {
+        return Err("That's the folder Lodestone's RuneLite already uses.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || backup::read_runelite(&from).and_then(|c| backup::put_runelite(&to, &c)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Forget where a character's window was, so the window manager places it next time.
+#[tauri::command]
+fn forget_window(st: State<'_, App>, pick: String) -> Result<(), String> {
+    let mut store = st.store.lock().unwrap();
+    if store.windows.remove(&pick).is_some() {
+        st.save(&store)?;
+    }
+    Ok(())
+}
+
 fn emit_instances(app: &AppHandle) {
     let list = app.state::<App>().instances.lock().unwrap().clone();
     let _ = app.emit("instances", list);
@@ -500,10 +746,22 @@ async fn start(
         }
         _ => None,
     };
+    let pick = format!("{account_id}:{character_id}");
+    let profile = if client == Client::Runelite {
+        let info = st.store.lock().unwrap().characters.get(&pick).cloned();
+        profiles::for_character(&settings, info.as_ref(), &character.display_name).filter(|p| profiles::valid_name(p))
+    } else {
+        None
+    };
+    if let Some(p) = &profile {
+        let (dir, p) = (profiles::dir(&settings), p.clone());
+        tauri::async_runtime::spawn_blocking(move || profiles::ensure(&dir, &p)).await.map_err(|e| e.to_string())??;
+    }
     let who = launch::Who {
         session_id: &session,
         character_id: &character.account_id,
         display_name: &character.display_name,
+        profile: profile.as_deref(),
     };
     let plan = launch::plan(client, &settings, &who, debug_port)?;
     let log = launch::log_path(client);
@@ -848,6 +1106,7 @@ fn open_folder(st: State<'_, App>, which: String) -> Result<(), String> {
                 "clients" => config::data_dir().join("clients"),
                 "plugins" => launch::sideload_dir(&st.store.lock().unwrap().settings),
                 "screenshots" => launch::screenshot_dir(&st.store.lock().unwrap().settings),
+                "backups" => backup::dir(),
                 _ => return Err("unknown folder".into()),
             };
             let _ = std::fs::create_dir_all(&dir);
@@ -964,6 +1223,7 @@ pub fn run() {
         .connect_timeout(Duration::from_secs(10))
         .build()
         .expect("HTTP client");
+    let (win_tx, win_rx) = std::sync::mpsc::channel();
     let state = App {
         store: Mutex::new(Store::load_from(&Store::path())),
         secrets: tokio::sync::OnceCell::new(),
@@ -980,6 +1240,7 @@ pub fn run() {
         tray: AtomicBool::new(false),
         release: Mutex::new(None),
         updating: AtomicBool::new(false),
+        windows: Mutex::new(win_tx),
     };
     tauri::Builder::default()
         .manage(state)
@@ -997,8 +1258,10 @@ pub fn run() {
                 }
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             listen_for_others(app.handle().clone());
+            let handle = app.handle().clone();
+            std::thread::spawn(move || window_thread(handle, win_rx));
             if tray::available() {
                 match tray::setup(app.handle()) {
                     Ok(()) => app.state::<App>().tray.store(true, Ordering::Relaxed),
@@ -1104,6 +1367,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_state,
             save_settings,
+            save_character,
+            runelite_profiles,
+            share_profile,
+            tile_windows,
+            restore_windows,
+            monitors,
+            forget_window,
+            news,
+            server_status,
+            open_news,
+            backups,
+            make_backup,
+            restore_backup,
+            bolt_folders,
+            import_bolt,
             add_account,
             reauth_account,
             submit_login_url,
@@ -1113,6 +1391,8 @@ pub fn run() {
             move_account,
             refresh_accounts,
             update_clients,
+            rollback_client,
+            resume_updates,
             launch,
             stop_instance,
             stop_all,

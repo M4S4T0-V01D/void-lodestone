@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink, FolderOpen, KeyRound, Palette, RefreshCw, Rocket, RotateCcw, Shield, X } from 'lucide-react';
+import { Archive, ExternalLink, FolderOpen, KeyRound, Palette, RefreshCw, Rocket, RotateCcw, Shield, Users, X } from 'lucide-react';
 import logo from '../assets/logo.svg';
 import { CLIENTS } from '../format';
 import { findTheme, THEMES } from '../themes';
 import type { Folder } from '../api';
-import type { AppState, ClientId, ClientOpts, Settings } from '../types';
+import type { AppState, ClientId, ClientOpts, ClientStatus, Settings } from '../types';
+import { BackupPanel, CharacterSwitches, Rollback, ShareProfiles, type Notify } from './SettingsPanels';
 
-type Tab = 'appearance' | 'clients' | 'launching' | 'about';
+type Tab = 'appearance' | 'clients' | 'characters' | 'launching' | 'backup' | 'about';
 
 interface Props {
   state: AppState;
@@ -17,12 +18,19 @@ interface Props {
   onOpenFolder: (which: Folder) => void;
   /** Look for a newer Lodestone now. */
   onCheckUpdate: () => void;
+  notify: Notify;
+  /** A client was rolled back or resumed. */
+  onClients: (c: ClientStatus[]) => void;
+  /** A backup was restored: the window closes and the app takes this state. */
+  onRestored: (s: AppState) => void;
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'clients', label: 'Clients', icon: Rocket },
+  { id: 'characters', label: 'Characters', icon: Users },
   { id: 'launching', label: 'Launching', icon: KeyRound },
+  { id: 'backup', label: 'Backup', icon: Archive },
   { id: 'about', label: 'Privacy & about', icon: Shield },
 ];
 
@@ -76,7 +84,7 @@ function Slider(p: {
   );
 }
 
-export default function SettingsModal({ state, onPreview, onSave, onClose, onOpenFolder, onCheckUpdate }: Props) {
+export default function SettingsModal({ state, onPreview, onSave, onClose, onOpenFolder, onCheckUpdate, notify, onClients, onRestored }: Props) {
   const [tab, setTab] = useState<Tab>('appearance');
   const [s, setS] = useState<Settings>(state.settings);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((old) => ({ ...old, [k]: v }));
@@ -297,6 +305,7 @@ export default function SettingsModal({ state, onPreview, onSave, onClose, onOpe
                     </span>
                     {CLIENTS[c].name}
                   </h3>
+                  <Rollback status={state.clients.find((x) => x.client === c)} onClients={onClients} notify={notify} />
                   <div className="field-row">
                     {c !== 'rs3' && (
                       <div className="field">
@@ -408,6 +417,19 @@ export default function SettingsModal({ state, onPreview, onSave, onClose, onOpe
             </>
           )}
 
+          {tab === 'characters' && (
+            <>
+              <span className="hint">Notes, goals, tags, a colour and a profile for one character: pick it, then “Notes” under Play.</span>
+              <CharacterSwitches s={s} set={set} />
+              <div className="group">
+                <h3>Share settings between RuneLite profiles</h3>
+                <ShareProfiles notify={notify} />
+              </div>
+            </>
+          )}
+
+          {tab === 'backup' && <BackupPanel state={state} notify={notify} onOpenFolder={onOpenFolder} onRestored={onRestored} />}
+
           {tab === 'launching' && (
             <>
               <label className="check">
@@ -507,7 +529,7 @@ export default function SettingsModal({ state, onPreview, onSave, onClose, onOpe
                 <ul className="list">
                   <li>
                     No telemetry, analytics or crash reporting. Lodestone talks only to Jagex, GitHub (RuneLite and Lodestone releases), the HDOS CDN and
-                    Jagex's RS3 package server.
+                    Jagex's RS3 package server. The News window reads Jagex's news feeds and server lists only while it is open.
                   </li>
                   <li>You sign in on Jagex's own page. Your password and the long-lived sign-in tokens are never stored.</li>
                   <li>

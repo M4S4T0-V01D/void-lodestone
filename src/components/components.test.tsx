@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import Accounts from './Accounts';
+import CharacterModal, { EMPTY_INFO, parseTags } from './CharacterModal';
+import Instances from './Instances';
+import { newsDate } from './NewsModal';
 import Stage from './Stage';
-import type { Account } from '../types';
+import type { Account, Instance } from '../types';
 
 const accounts: Account[] = [
   { id: 'a', label: 'Main', addedAt: 0, signedIn: true, health: { state: 'offline', checkedAt: 1 }, characters: [{ accountId: '1', displayName: 'Zezima' }] },
@@ -104,5 +107,90 @@ describe('Stage', () => {
   it('places the background picture', () => {
     const { container } = render(<Stage {...base} game="osrs" accounts={accounts} pick="a:1" onPlay={noop} background="blob:x" backgroundPosition="top" />);
     expect((container.querySelector('.stage-bg') as HTMLElement).style.backgroundPosition).toBe('center top');
+  });
+
+  it('shows tags and the next goal, and opens the notes', () => {
+    const onNotes = vi.fn();
+    const info = { ...EMPTY_INFO, tags: ['ironman'], goals: [{ text: 'Dragon Slayer', done: true }, { text: '99 Fishing', done: false }] };
+    render(<Stage {...base} game="osrs" accounts={accounts} pick="a:1" onPlay={noop} info={info} onNotes={onNotes} />);
+    expect(screen.getByText('ironman')).toBeTruthy();
+    expect(screen.getByText('Next: 99 Fishing')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Notes/ }));
+    expect(onNotes).toHaveBeenCalled();
+  });
+});
+
+describe('parseTags', () => {
+  it('trims, drops blanks and repeats', () => {
+    expect(parseTags(' ironman, skiller,, Ironman ,pker ')).toEqual(['ironman', 'skiller', 'pker']);
+    expect(parseTags('')).toEqual([]);
+  });
+});
+
+describe('newsDate', () => {
+  it('shortens feed dates and keeps what it cannot read', () => {
+    expect(newsDate('Wed, 11 Nov 2026 11:00:00 GMT')).toMatch(/2026/);
+    expect(newsDate('soon')).toBe('soon');
+  });
+});
+
+describe('CharacterModal', () => {
+  it('saves tags, colour and a typed goal', () => {
+    const onSave = vi.fn();
+    render(
+      <CharacterModal name="Zezima" info={EMPTY_INFO} profiles={[]} ownProfiles onSave={onSave} onForgetWindow={noop} onClose={noop} />,
+    );
+    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'ironman, skiller' } });
+    fireEvent.click(screen.getByTitle('#5fb36b'));
+    fireEvent.change(screen.getByPlaceholderText(/Quest X next/), { target: { value: 'Quest cape' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+    expect(onSave).toHaveBeenCalledWith({ ...EMPTY_INFO, tags: ['ironman', 'skiller'], color: '#5fb36b', goals: [{ text: 'Quest cape', done: false }] });
+  });
+
+  it('shows and forgets the remembered window', () => {
+    const onForget = vi.fn();
+    render(
+      <CharacterModal
+        name="Zezima"
+        info={EMPTY_INFO}
+        profiles={[]}
+        ownProfiles={false}
+        window={{ x: 10, y: 20, width: 800, height: 600, maximized: false }}
+        onSave={noop}
+        onForgetWindow={onForget}
+        onClose={noop}
+      />,
+    );
+    expect(screen.getByText(/800×600 at 10, 20/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Forget/ }));
+    expect(onForget).toHaveBeenCalled();
+  });
+});
+
+describe('Instances', () => {
+  const inst: Instance = { pid: 1, client: 'runelite', accountId: 'a', accountLabel: 'Main', character: 'Zezima', startedAt: 0, log: '', characterId: '1' };
+
+  it('tiles over the chosen monitor and restores', () => {
+    const onTile = vi.fn();
+    const onRestore = vi.fn();
+    const monitors = [
+      { x: 0, y: 0, width: 1920, height: 1080, primary: true },
+      { x: 1920, y: 0, width: 2560, height: 1440, primary: false },
+    ];
+    render(
+      <Instances instances={[inst]} onStop={noop} onStopAll={noop} onRestart={noop} onLogs={noop} onLog={noop} onTile={onTile} onRestoreWindows={onRestore} monitors={monitors} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Tile/ }));
+    expect(onTile).toHaveBeenLastCalledWith(null);
+    fireEvent.change(screen.getByLabelText('Tile over'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: /Tile/ }));
+    expect(onTile).toHaveBeenLastCalledWith(1);
+    fireEvent.click(screen.getByRole('button', { name: /Restore/ }));
+    expect(onRestore).toHaveBeenCalled();
+  });
+
+  it('hides the window tools with no games', () => {
+    render(<Instances instances={[]} onStop={noop} onStopAll={noop} onRestart={noop} onLogs={noop} onLog={noop} onTile={noop} />);
+    expect(screen.queryByRole('button', { name: /Tile/ })).toBeNull();
   });
 });

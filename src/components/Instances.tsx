@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { RotateCw, ScrollText, Square } from 'lucide-react';
+import { LayoutGrid, RotateCw, ScrollText, Square, Undo2 } from 'lucide-react';
 import { CLIENTS, uptime } from '../format';
-import type { Instance } from '../types';
+import type { Instance, Monitor } from '../types';
 
 interface Props {
   instances: Instance[];
@@ -13,9 +13,15 @@ interface Props {
   restarting?: number[];
   onLogs: () => void;
   onLog: (i: Instance) => void;
+  /** Tile the game windows over every monitor, or the one given. */
+  onTile?: (monitor: number | null) => void;
+  /** Put the windows back where each character had them. */
+  onRestoreWindows?: () => void;
+  monitors?: Monitor[];
 }
 
-export default function Instances({ instances, onStop, onStopAll, onRestart, restarting = [], onLogs, onLog }: Props) {
+export default function Instances({ instances, onStop, onStopAll, onRestart, restarting = [], onLogs, onLog, onTile, onRestoreWindows, monitors = [] }: Props) {
+  const [screen, setScreen] = useState('all');
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
     if (!instances.length) return;
@@ -38,6 +44,29 @@ export default function Instances({ instances, onStop, onStopAll, onRestart, res
           Logs
         </button>
       </div>
+      {onTile && instances.length > 0 && (
+        <div className="window-tools" role="group" aria-label="Game windows">
+          <button className="btn small" title="Lay the game windows out side by side. Only moves windows." onClick={() => onTile(screen === 'all' ? null : Number(screen))}>
+            <LayoutGrid size={12} /> Tile
+          </button>
+          {monitors.length > 1 && (
+            <select className="select small" aria-label="Tile over" value={screen} onChange={(e) => setScreen(e.target.value)}>
+              <option value="all">All monitors</option>
+              {monitors.map((m, n) => (
+                <option key={n} value={n}>
+                  Monitor {n + 1}
+                  {m.primary ? ' (main)' : ''} · {m.width}×{m.height}
+                </option>
+              ))}
+            </select>
+          )}
+          {onRestoreWindows && (
+            <button className="btn small ghost" title="Put each window back where that character had it" onClick={onRestoreWindows}>
+              <Undo2 size={12} /> Restore
+            </button>
+          )}
+        </div>
+      )}
       <div className="side-scroll">
         {!instances.length && <div className="empty">Nothing running. Games you launch show up here.</div>}
         {instances.map((i) => (

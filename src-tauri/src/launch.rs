@@ -107,7 +107,7 @@ pub fn custom_jar(client: Client, settings: &Settings) -> Option<String> {
     (opts.use_jar && !path.is_empty()).then(|| expand_home(path))
 }
 
-fn runelite_dir(settings: &Settings) -> PathBuf {
+pub fn runelite_dir(settings: &Settings) -> PathBuf {
     game_home(settings).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default())).join(".runelite")
 }
 
@@ -170,6 +170,8 @@ pub struct Who<'a> {
     pub session_id: &'a str,
     pub character_id: &'a str,
     pub display_name: &'a str,
+    /// The RuneLite settings profile to open; None for RuneLite's active one.
+    pub profile: Option<&'a str>,
 }
 
 /// Lets a debugger (IntelliJ's "Remote JVM Debug") attach to the game; only on this computer, and the game doesn't wait.
@@ -275,6 +277,9 @@ pub fn plan(client: Client, settings: &Settings, who: &Who, debug: Option<u16>) 
             }
             c.extend(split_args(&opts.jvm_args)?);
             c.extend(["-jar".to_string(), jar]);
+            if let (Client::Runelite, Some(p)) = (client, who.profile) {
+                c.push(format!("--profile={p}"));
+            }
             c.extend(split_args(&opts.args)?);
             c
         }
@@ -458,7 +463,7 @@ mod tests {
         let mut st = Settings { java_path: "/opt/java".into(), wrapper: "gamemoderun".into(), ..Settings::default() };
         st.runelite.jvm_args = "-Xmx1g".into();
         st.runelite.args = "--debug".into();
-        let who = Who { session_id: "sess", character_id: "char", display_name: "Zezima" };
+        let who = Who { session_id: "sess", character_id: "char", display_name: "Zezima", profile: None };
         let p = plan(Client::Runelite, &st, &who, None).unwrap();
         assert_eq!(p.argv[..3], s(&["gamemoderun", "/opt/java", "-Xmx1g"]));
         assert_eq!(p.argv[3], "-jar");
@@ -480,6 +485,10 @@ mod tests {
         let p = plan(Client::Runelite, &st, &who, Some(5006)).unwrap();
         assert_eq!(p.argv[3], jdwp_arg(5006));
         assert!(p.argv[3].contains("address=127.0.0.1:5006"), "debugger only on this computer");
+        let with = Who { profile: Some("Iron Zezima"), ..who };
+        let p = plan(Client::Runelite, &st, &with, None).unwrap();
+        assert_eq!(p.argv[6..8], s(&["--profile=Iron Zezima", "--debug"]));
+        assert!(!plan(Client::Hdos, &st, &with, None).unwrap().argv.iter().any(|a| a.starts_with("--profile")));
         let _ = std::fs::remove_file(&jar);
         st.runelite.jar_path.clear();
         st.game_home.clear();
